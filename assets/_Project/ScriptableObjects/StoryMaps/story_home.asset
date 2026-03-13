@@ -1,0 +1,23 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 4c46f177de65f7245ab8a74d6eee35ae, type: 3}
+  m_Name: story_home
+  m_EditorClassIdentifier: Assembly-CSharp::CaoCao.Story.StoryMapData
+  mapKey: story/home
+  gridSize: {x: 25, y: 20}
+  editorTileWidth: 0.24
+  editorTileHeight: 0.24
+  editorGridOffset: {x: 0.24, y: -0.24}
+  unitPlacements:
+  - unitId: hero
+    tile: {x: 21, y: 7}
+  blockedTiles: []

@@ -1,0 +1,31 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 2efff0921f302f64a9346a12646111cc, type: 3}
+  m_Name: def_drug
+  m_EditorClassIdentifier: Assembly-CSharp::CaoCao.Data.ItemDefinition
+  id: def_drug
+  displayName: "\u9632\u5FA1\u4E39"
+  description: "\u6C38\u4E45\u63D0\u5347\u9632\u5FA1\u529B1\u70B9"
+  icon: {fileID: 0}
+  itemType: 3
+  atkBonus: 0
+  defBonus: 1
+  speedBonus: 0
+  hpBonus: 0
+  mpBonus: 0
+  healAmount: 0
+  usableInBattle: 1
+  usableInCamp: 1
+  buyPrice: 500
+  sellPrice: 250
+  restrictToHeroIds: []
+  restrictToUnitTypeIds: []

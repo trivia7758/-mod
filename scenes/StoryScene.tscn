@@ -1,0 +1,328 @@
+[gd_scene format=3 uid="uid://6434ah303g2h"]
+
+[ext_resource type="Script" uid="uid://b87jgx70r7j7p" path="res://scripts/StoryScene.gd" id="1"]
+[ext_resource type="Theme" path="res://themes/ui_theme.tres" id="2"]
+[ext_resource type="Texture2D" uid="uid://b3igjp3lr556q" path="res://assets/ui/backgrounds/story/home.png" id="3"]
+[ext_resource type="Script" path="res://scripts/Unit.gd" id="4"]
+[ext_resource type="Script" path="res://scripts/GridNav.gd" id="5"]
+[ext_resource type="Script" path="res://scripts/Cutscene.gd" id="6"]
+[ext_resource type="Script" path="res://scripts/DialogueBox.gd" id="7"]
+
+[node name="StoryScene" type="Control" unique_id=604975787]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme = ExtResource("2")
+script = ExtResource("1")
+
+[node name="GridNav" type="Node" parent="." unique_id=1641861214]
+script = ExtResource("5")
+
+[node name="Cutscene" type="Node" parent="." unique_id=1739270792]
+script = ExtResource("6")
+
+[node name="BackgroundFallback" type="ColorRect" parent="." unique_id=701428962]
+layout_mode = 0
+anchor_right = 1.0
+anchor_bottom = 1.0
+color = Color(0.1, 0.1, 0.1, 1)
+
+[node name="Background" type="TextureRect" parent="." unique_id=662943095]
+layout_mode = 0
+anchor_right = 1.0
+anchor_bottom = 1.0
+texture = ExtResource("3")
+expand_mode = 1
+stretch_mode = 6
+
+[node name="TypeSfx" type="AudioStreamPlayer" parent="." unique_id=663306202]
+
+[node name="Stage" type="Control" parent="." unique_id=545037554]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 4.0
+offset_top = 14.0
+offset_right = 4.0
+offset_bottom = 14.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="TileMap" type="TileMap" parent="Stage" unique_id=1093263139]
+position = Vector2(0, 0)
+
+[node name="Hero" type="Node2D" parent="Stage" unique_id=1371866720]
+position = Vector2(760, 395)
+script = ExtResource("4")
+
+[node name="Sprite" type="AnimatedSprite2D" parent="Stage/Hero" unique_id=1051100080]
+position = Vector2(574, 3)
+centered = false
+
+[node name="Talk" type="Label" parent="Stage/Hero" unique_id=84085320]
+visible = false
+anchors_preset = 5
+anchor_left = 0.5
+anchor_right = 0.5
+offset_left = -16.0
+offset_top = -24.0
+offset_right = 16.0
+offset_bottom = -4.0
+theme_override_font_sizes/font_size = 26
+text = "..."
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="Oldman" type="Node2D" parent="Stage" unique_id=852501228]
+visible = false
+position = Vector2(720, 320)
+script = ExtResource("4")
+
+[node name="Sprite" type="AnimatedSprite2D" parent="Stage/Oldman" unique_id=12659489]
+centered = false
+
+[node name="Talk" type="Label" parent="Stage/Oldman" unique_id=544546900]
+visible = false
+anchors_preset = 5
+anchor_left = 0.5
+anchor_right = 0.5
+offset_left = -16.0
+offset_top = -24.0
+offset_right = 16.0
+offset_bottom = -4.0
+theme_override_font_sizes/font_size = 26
+text = "..."
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="TopBar" type="Control" parent="." unique_id=1434560508]
+anchors_preset = 0
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -360.0
+offset_top = 14.0
+offset_right = -20.0
+offset_bottom = 54.0
+
+[node name="MoralityBar" type="Control" parent="TopBar" unique_id=366454408]
+anchors_preset = 0
+anchor_right = 1.0
+offset_left = 60.0
+offset_top = 6.0
+offset_bottom = 16.0
+
+[node name="MoralityBG" type="ColorRect" parent="TopBar/MoralityBar" unique_id=1887233649]
+layout_mode = 0
+anchor_right = 1.0
+anchor_bottom = 1.0
+color = Color(0.2, 0.18, 0.18, 1)
+
+[node name="MoralityBorder" type="Panel" parent="TopBar/MoralityBar" unique_id=1288249984]
+z_index = 2
+layout_mode = 0
+
+[node name="MoralityRed" type="ColorRect" parent="TopBar/MoralityBar" unique_id=1516743891]
+layout_mode = 0
+color = Color(0.82, 0.22, 0.2, 1)
+
+[node name="MoralityBlue" type="ColorRect" parent="TopBar/MoralityBar" unique_id=2045570009]
+layout_mode = 0
+color = Color(0.2, 0.4, 0.85, 1)
+
+[node name="MoralityLabel" type="Label" parent="TopBar" unique_id=950545263]
+layout_mode = 0
+offset_right = 50.0
+offset_bottom = 20.0
+
+[node name="LocationLabel" type="Label" parent="TopBar" unique_id=633878173]
+layout_mode = 0
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_top = 2.0
+offset_bottom = 22.0
+horizontal_alignment = 2
+vertical_alignment = 1
+
+[node name="DialogueBox" type="Control" parent="." unique_id=372594064]
+anchors_preset = 0
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_top = -210.0
+script = ExtResource("7")
+
+[node name="BoxBorder" type="ColorRect" parent="DialogueBox" unique_id=1108544868]
+layout_mode = 0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 120.0
+offset_top = 28.0
+offset_right = -120.0
+offset_bottom = -18.0
+color = Color(0.5, 0.38, 0.2, 1)
+
+[node name="BoxBG" type="ColorRect" parent="DialogueBox" unique_id=1847955545]
+layout_mode = 0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 122.0
+offset_top = 30.0
+offset_right = -122.0
+offset_bottom = -20.0
+color = Color(0.18, 0.12, 0.1, 0.95)
+
+[node name="NameBar" type="ColorRect" parent="DialogueBox" unique_id=1478412728]
+layout_mode = 0
+offset_left = 150.0
+offset_top = 10.0
+offset_right = 335.0
+offset_bottom = 42.0
+color = Color(0.5, 0.38, 0.2, 1)
+
+[node name="NameBarInner" type="ColorRect" parent="DialogueBox" unique_id=1942574298]
+layout_mode = 0
+offset_left = 152.0
+offset_top = 12.0
+offset_right = 333.0
+offset_bottom = 40.0
+color = Color(0.18, 0.12, 0.1, 0.95)
+
+[node name="NameLabel" type="Label" parent="DialogueBox" unique_id=153954778]
+layout_mode = 0
+offset_left = 168.0
+offset_top = 12.0
+offset_right = 430.0
+offset_bottom = 42.0
+
+[node name="TextLabel" type="RichTextLabel" parent="DialogueBox" unique_id=1738104458]
+layout_mode = 0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 168.0
+offset_top = 50.0
+offset_right = -120.0
+offset_bottom = -30.0
+
+[node name="PortraitLeftFrame" type="Panel" parent="DialogueBox" unique_id=236071161]
+layout_mode = 0
+anchor_bottom = 1.0
+offset_left = 24.0
+offset_top = 6.0
+offset_right = 156.0
+offset_bottom = -16.0
+
+[node name="PortraitLeftTex" type="TextureRect" parent="DialogueBox/PortraitLeftFrame" unique_id=396138908]
+layout_mode = 0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 6.0
+offset_top = 6.0
+offset_right = -6.0
+offset_bottom = -6.0
+expand_mode = 1
+stretch_mode = 6
+
+[node name="PortraitRightFrame" type="Panel" parent="DialogueBox" unique_id=1303953927]
+visible = false
+layout_mode = 0
+anchor_left = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -156.0
+offset_top = 6.0
+offset_right = -24.0
+offset_bottom = -16.0
+
+[node name="PortraitRightTex" type="TextureRect" parent="DialogueBox/PortraitRightFrame" unique_id=1052613751]
+layout_mode = 0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 6.0
+offset_top = 6.0
+offset_right = -6.0
+offset_bottom = -6.0
+expand_mode = 1
+stretch_mode = 6
+
+[node name="ChoicePanel" type="Control" parent="." unique_id=912050646]
+visible = false
+anchors_preset = 0
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -360.0
+offset_top = -90.0
+offset_right = 360.0
+offset_bottom = 90.0
+
+[node name="ChoiceBorder" type="ColorRect" parent="ChoicePanel" unique_id=754190498]
+layout_mode = 0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -2.0
+offset_top = -2.0
+offset_right = 2.0
+offset_bottom = 2.0
+mouse_filter = 2
+color = Color(0.5, 0.38, 0.2, 1)
+
+[node name="ChoiceBG" type="ColorRect" parent="ChoicePanel" unique_id=1028197470]
+layout_mode = 0
+anchor_right = 1.0
+anchor_bottom = 1.0
+mouse_filter = 2
+color = Color(0.18, 0.12, 0.1, 0.95)
+
+[node name="ChoiceList" type="VBoxContainer" parent="ChoicePanel" unique_id=1853357843]
+layout_mode = 0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 20.0
+offset_top = 16.0
+offset_right = -20.0
+offset_bottom = -16.0
+
+[node name="NarratorPanel" type="Control" parent="." unique_id=1140849513]
+visible = false
+anchors_preset = 0
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -420.0
+offset_top = -50.0
+offset_right = 420.0
+offset_bottom = 50.0
+
+[node name="NarratorBorder" type="ColorRect" parent="NarratorPanel" unique_id=2014880196]
+layout_mode = 0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -2.0
+offset_top = -2.0
+offset_right = 2.0
+offset_bottom = 2.0
+mouse_filter = 2
+color = Color(0.5, 0.38, 0.2, 1)
+
+[node name="NarratorBG" type="ColorRect" parent="NarratorPanel" unique_id=1188972387]
+layout_mode = 0
+anchor_right = 1.0
+anchor_bottom = 1.0
+mouse_filter = 2
+color = Color(0.18, 0.12, 0.1, 0.95)
+
+[node name="NarratorText" type="RichTextLabel" parent="NarratorPanel" unique_id=800360805]
+layout_mode = 0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 20.0
+offset_top = 12.0
+offset_right = -20.0
+offset_bottom = -12.0

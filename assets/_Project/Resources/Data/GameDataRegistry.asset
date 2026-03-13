@@ -1,0 +1,37 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 5dc72715d0b725549bb264429a031bdf, type: 3}
+  m_Name: GameDataRegistry
+  m_EditorClassIdentifier: Assembly-CSharp::CaoCao.Data.GameDataRegistry
+  allHeroes:
+  - {fileID: 11400000, guid: aa0681dc46838054990551dc3a04a227, type: 2}
+  - {fileID: 11400000, guid: 2d45fda261b3fb545be497d961adfc89, type: 2}
+  - {fileID: 11400000, guid: c7a60d0802ac88a4e8b4e04542cfcad8, type: 2}
+  - {fileID: 11400000, guid: b247c74ee3da83e4c91a85d7bc9c017f, type: 2}
+  allItems:
+  - {fileID: 11400000, guid: 1c6601d46def00946a21735bfbbb9d45, type: 2}
+  - {fileID: 11400000, guid: 9a9eb31eac28c0448a34f7d5062b6cb5, type: 2}
+  - {fileID: 11400000, guid: bfae2aff5dfae0046b0fb13a90ca4deb, type: 2}
+  - {fileID: 11400000, guid: dae22a08b1440e44d9f094206aca06c6, type: 2}
+  - {fileID: 11400000, guid: 3b685cafa91172f42968aef3b0c82ad3, type: 2}
+  - {fileID: 11400000, guid: 00c4bd982785f0a49911eae94d64ed71, type: 2}
+  - {fileID: 11400000, guid: 7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c, type: 2}
+  allSkills:
+  - {fileID: 11400000, guid: fd82b9d4dfadb794294edb457f338b5c, type: 2}
+  - {fileID: 11400000, guid: 2788d73df17ac934d8159358670353ad, type: 2}
+  - {fileID: 11400000, guid: 2d46150f577a6f34f8009ee5ac3f6b22, type: 2}
+  allUnitTypes:
+  - {fileID: 11400000, guid: 0eb1206b6b9066b4fadf767c7309b370, type: 2}
+  - {fileID: 11400000, guid: 7fdbad01a99ee9e4c8df6268920d3e11, type: 2}
+  - {fileID: 11400000, guid: a3404bf0abe950848880334f5f177846, type: 2}
+  allBattles:
+  - {fileID: 11400000, guid: a7e7bdf76cc3ca14c99b3b4a2dffb9f3, type: 2}

@@ -1,0 +1,24 @@
+[gd_scene load_steps=6 format=3]
+
+[ext_resource type="Script" path="res://scripts/Main.gd" id="1"]
+[ext_resource type="PackedScene" path="res://scenes/LogoScreen.tscn" id="2"]
+[ext_resource type="PackedScene" path="res://scenes/UpdateScreen.tscn" id="3"]
+[ext_resource type="PackedScene" path="res://scenes/AnnouncementScreen.tscn" id="4"]
+[ext_resource type="PackedScene" path="res://scenes/MenuScreen.tscn" id="5"]
+
+[node name="Main" type="Control"]
+anchor_right = 1.0
+anchor_bottom = 1.0
+script = ExtResource("1")
+
+[node name="LogoScreen" parent="." instance=ExtResource("2")]
+
+[node name="UpdateScreen" parent="." instance=ExtResource("3")]
+visible = false
+
+[node name="MenuScreen" parent="." instance=ExtResource("5")]
+visible = false
+
+[node name="AnnouncementScreen" parent="." instance=ExtResource("4")]
+visible = false
+z_index = 10

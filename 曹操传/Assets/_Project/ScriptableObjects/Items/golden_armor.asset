@@ -1,0 +1,32 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 2efff0921f302f64a9346a12646111cc, type: 3}
+  m_Name: golden_armor
+  m_EditorClassIdentifier: Assembly-CSharp::CaoCao.Data.ItemDefinition
+  id: golden_armor
+  displayName: "\u91D1\u7F15\u7532"
+  description: "\u9576\u91D1\u7684\u534E\u4E3D\u6218\u7532"
+  icon: {fileID: 0}
+  itemType: 1
+  atkBonus: 0
+  defBonus: 7
+  speedBonus: 0
+  hpBonus: 15
+  mpBonus: 0
+  healAmount: 0
+  usableInBattle: 0
+  usableInCamp: 0
+  buyPrice: 700
+  sellPrice: 350
+  restrictToHeroIds: []
+  restrictToUnitTypeIds:
+  - heavy_cavalry

@@ -1,0 +1,159 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scripts/SettingsDialog.gd" id="1"]
+[ext_resource type="Theme" path="res://themes/ui_theme.tres" id="2"]
+
+[node name="SettingsDialog" type="Control"]
+anchor_right = 1.0
+anchor_bottom = 1.0
+script = ExtResource("1")
+theme = ExtResource("2")
+
+[node name="Dim" type="ColorRect" parent="."]
+anchor_right = 1.0
+anchor_bottom = 1.0
+color = Color(0, 0, 0, 0.5)
+
+[node name="Panel" type="Panel" parent="."]
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -560
+offset_top = -320
+offset_right = 560
+offset_bottom = 320
+
+[node name="Title" type="Label" parent="Panel"]
+anchor_left = 0.5
+anchor_top = 0.0
+anchor_right = 0.5
+anchor_bottom = 0.0
+offset_left = -200
+offset_top = 14
+offset_right = 200
+offset_bottom = 52
+text = "设置"
+horizontal_alignment = 1
+vertical_alignment = 1
+theme_override_font_sizes/font_size = 26
+
+[node name="Close" type="Button" parent="Panel"]
+anchor_left = 1.0
+anchor_top = 0.0
+anchor_right = 1.0
+anchor_bottom = 0.0
+offset_left = -120
+offset_top = 12
+offset_right = -20
+offset_bottom = 52
+text = "关闭"
+
+[node name="Content" type="VBoxContainer" parent="Panel"]
+anchor_left = 0.0
+anchor_top = 0.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 24
+offset_top = 70
+offset_right = -24
+offset_bottom = -24
+
+[node name="AudioTitle" type="Label" parent="Panel/Content"]
+text = "音频设置"
+
+[node name="AudioGrid" type="GridContainer" parent="Panel/Content"]
+columns = 2
+
+[node name="Bgm" type="CheckBox" parent="Panel/Content/AudioGrid"]
+text = "背景音乐"
+button_pressed = true
+
+[node name="Sfx" type="CheckBox" parent="Panel/Content/AudioGrid"]
+text = "游戏音效"
+button_pressed = true
+
+[node name="DisplayTitle" type="Label" parent="Panel/Content"]
+text = "显示设置"
+
+[node name="DisplayGrid" type="GridContainer" parent="Panel/Content"]
+columns = 2
+
+[node name="ShowHp" type="CheckBox" parent="Panel/Content/DisplayGrid"]
+text = "战斗时显示血条"
+button_pressed = true
+
+[node name="LongPress" type="CheckBox" parent="Panel/Content/DisplayGrid"]
+text = "长按可使剧情加快"
+button_pressed = true
+
+[node name="AutoMinimap" type="CheckBox" parent="Panel/Content/DisplayGrid"]
+text = "自动显示战场缩小图"
+button_pressed = true
+
+[node name="DialogHold" type="CheckBox" parent="Panel/Content/DisplayGrid"]
+text = "会话窗口不自动关闭"
+button_pressed = true
+
+[node name="StatusChange" type="CheckBox" parent="Panel/Content/DisplayGrid"]
+text = "显示状态条变更"
+button_pressed = true
+
+[node name="CritLine" type="CheckBox" parent="Panel/Content/DisplayGrid"]
+text = "开启暴击台词"
+button_pressed = true
+
+[node name="SpeedTitle" type="Label" parent="Panel/Content"]
+text = "速度设置"
+
+[node name="MessageSpeed" type="HBoxContainer" parent="Panel/Content"]
+
+[node name="MessageLabel" type="Label" parent="Panel/Content/MessageSpeed"]
+text = "信息显示速度"
+custom_minimum_size = Vector2(160, 0)
+
+[node name="MessageFast" type="Button" parent="Panel/Content/MessageSpeed"]
+text = "快"
+toggle_mode = true
+
+[node name="MessageMid" type="Button" parent="Panel/Content/MessageSpeed"]
+text = "中"
+toggle_mode = true
+
+[node name="MessageSlow" type="Button" parent="Panel/Content/MessageSpeed"]
+text = "慢"
+toggle_mode = true
+
+[node name="MoveSpeed" type="HBoxContainer" parent="Panel/Content"]
+
+[node name="MoveLabel" type="Label" parent="Panel/Content/MoveSpeed"]
+text = "武将移动速度"
+custom_minimum_size = Vector2(160, 0)
+
+[node name="MoveFast" type="Button" parent="Panel/Content/MoveSpeed"]
+text = "快"
+toggle_mode = true
+
+[node name="MoveMid" type="Button" parent="Panel/Content/MoveSpeed"]
+text = "中"
+toggle_mode = true
+
+[node name="MoveSlow" type="Button" parent="Panel/Content/MoveSpeed"]
+text = "慢"
+toggle_mode = true
+
+[node name="LanguageTitle" type="Label" parent="Panel/Content"]
+text = "语言设置"
+
+[node name="AutoPlay" type="CheckBox" parent="Panel/Content"]
+text = "剧情自动播放"
+button_pressed = true
+
+[node name="LanguageRow" type="HBoxContainer" parent="Panel/Content"]
+
+[node name="LanguageLabel" type="Label" parent="Panel/Content/LanguageRow"]
+text = "语言"
+custom_minimum_size = Vector2(160, 0)
+
+[node name="LanguageOption" type="OptionButton" parent="Panel/Content/LanguageRow"]
+item_count = 2

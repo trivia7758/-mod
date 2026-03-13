@@ -1,0 +1,32 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 2efff0921f302f64a9346a12646111cc, type: 3}
+  m_Name: dragon_spear
+  m_EditorClassIdentifier: Assembly-CSharp::CaoCao.Data.ItemDefinition
+  id: dragon_spear
+  displayName: "\u9F99\u80C6\u67AA"
+  description: "\u4F20\u8BF4\u4E2D\u7684\u540D\u67AA"
+  icon: {fileID: 0}
+  itemType: 0
+  atkBonus: 10
+  defBonus: 0
+  speedBonus: 0
+  hpBonus: 0
+  mpBonus: 0
+  healAmount: 0
+  usableInBattle: 0
+  usableInCamp: 0
+  buyPrice: 800
+  sellPrice: 400
+  restrictToHeroIds: []
+  restrictToUnitTypeIds:
+  - heavy_cavalry
