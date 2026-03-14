@@ -333,8 +333,28 @@ namespace CaoCao.Battle
         {
             SetState(new AnimatingState());
             _movedThisTurn = true;
+
+            // Build path from parent chain (endpoint → startpoint, then reverse)
+            var path = BuildPath(_selectedOrigin, cell);
+
             SelectedUnit.OnMoved += OnUnitMoved;
-            SelectedUnit.MoveTo(cell, true);
+            SelectedUnit.MoveAlongPath(path);
+        }
+
+        /// <summary>
+        /// Reconstruct path from parent dictionary. Returns list starting from first step (excluding start).
+        /// </summary>
+        List<Vector2Int> BuildPath(Vector2Int start, Vector2Int end)
+        {
+            var path = new List<Vector2Int>();
+            var current = end;
+            while (current != start && _parent.ContainsKey(current) && _parent[current].HasValue)
+            {
+                path.Add(current);
+                current = _parent[current].Value;
+            }
+            path.Reverse();
+            return path;
         }
 
         void OnUnitMoved(BattleUnit unit)
@@ -447,7 +467,7 @@ namespace CaoCao.Battle
             EventBus.TurnChanged("enemy");
 
             var enemies = GetUnitsByTeam(UnitTeam.Enemy);
-            foreach (var e in enemies) e.acted = false;
+            foreach (var e in enemies) e.ResetActed();
 
             foreach (var enemy in enemies)
             {
@@ -461,7 +481,7 @@ namespace CaoCao.Battle
                 if (target != null)
                 {
                     enemy.Attack(target);
-                    yield return new WaitForSeconds(0.3f);
+                    yield return new WaitForSeconds(0.5f);
                     if (CheckBattleEnd()) yield break;
                     enemy.acted = true;
                     continue;
@@ -472,7 +492,7 @@ namespace CaoCao.Battle
                 {
                     bool moved = false;
                     enemy.OnMoved += _ => moved = true;
-                    enemy.MoveTo(path[^1], true);
+                    enemy.MoveAlongPath(path);
                     while (!moved) yield return null;
                     enemy.OnMoved -= _ => moved = true;
 
@@ -480,7 +500,7 @@ namespace CaoCao.Battle
                     if (target != null)
                     {
                         enemy.Attack(target);
-                        yield return new WaitForSeconds(0.3f);
+                        yield return new WaitForSeconds(0.5f);
                         if (CheckBattleEnd()) yield break;
                     }
                 }
@@ -489,7 +509,7 @@ namespace CaoCao.Battle
 
             // End enemy turn — start new player turn
             _turnCount++;
-            foreach (var p in GetUnitsByTeam(UnitTeam.Player)) p.acted = false;
+            foreach (var p in GetUnitsByTeam(UnitTeam.Player)) p.ResetActed();
             _currentTeam = "player";
             EventBus.TurnChanged("player");
             SetState(new IdleState());
@@ -512,14 +532,7 @@ namespace CaoCao.Battle
         void OnUnitDied(BattleUnit unit)
         {
             Debug.Log($"[BattleController] Unit died: {unit.gameObject.name} (team={unit.team})");
-
-            // Hide dead unit (keep GO for potential revival/animation)
-            var sr = unit.GetComponentInChildren<SpriteRenderer>();
-            if (sr != null) sr.enabled = false;
-
-            // Hide HP label
-            var canvas = unit.GetComponentInChildren<Canvas>();
-            if (canvas != null) canvas.gameObject.SetActive(false);
+            // Death animation is handled by BattleUnit.Attack() → BattleUnitAnimator.PlayDeath()
         }
 
         bool CheckBattleEnd()
