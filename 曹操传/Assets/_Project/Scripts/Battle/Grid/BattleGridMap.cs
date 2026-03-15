@@ -204,11 +204,14 @@ namespace CaoCao.Battle
                 {
                     // Index by asset name (e.g., "plain", "forest")
                     _terrainTypeByName[tt.name.ToLower()] = tt;
+                    // Also index by terrainId (e.g., "plain", "forest")
+                    if (!string.IsNullOrEmpty(tt.terrainId))
+                        _terrainTypeByName[tt.terrainId.ToLower()] = tt;
                     // Also index by terrainName (e.g., "平原", "森林")
                     if (!string.IsNullOrEmpty(tt.terrainName))
                         _terrainTypeByName[tt.terrainName.ToLower()] = tt;
                 }
-                Debug.Log($"[BattleGridMap] Loaded {allTerrains.Length} TerrainType assets from Resources for name-matching");
+                Debug.Log($"[BattleGridMap] Loaded {allTerrains.Length} TerrainType assets for name-matching");
             }
 
             // Try exact name match
@@ -327,6 +330,42 @@ namespace CaoCao.Battle
             return IsPassable(cell, MovementType.Infantry);
         }
 
+        // ── UnitClass-based API (preferred) ──
+
+        /// <summary>Get movement cost for a specific UnitClass.</summary>
+        public int GetCost(Vector2Int cell, UnitClass unitClass)
+        {
+            if (_terrainCache.TryGetValue(cell, out var tt) && tt != null)
+                return tt.GetMoveCost(unitClass);
+
+            // Demo fallback
+            string terrain = _fallbackTerrain.GetValueOrDefault(cell, "plain");
+            return FallbackCosts.GetValueOrDefault(terrain, 1);
+        }
+
+        /// <summary>Check passability for a specific UnitClass.</summary>
+        public bool IsPassable(Vector2Int cell, UnitClass unitClass)
+        {
+            if (!IsInBounds(cell)) return false;
+            return GetCost(cell, unitClass) > 0;
+        }
+
+        /// <summary>Get effect% for a unit class on a cell (100=normal).</summary>
+        public int GetEffect(Vector2Int cell, UnitClass unitClass)
+        {
+            if (_terrainCache.TryGetValue(cell, out var tt) && tt != null)
+                return tt.GetEffect(unitClass);
+            return 100;
+        }
+
+        /// <summary>Get heal amount for a unit on a cell this turn.</summary>
+        public int GetHeal(Vector2Int cell, int maxHp)
+        {
+            if (_terrainCache.TryGetValue(cell, out var tt) && tt != null)
+                return tt.CalcHeal(maxHp);
+            return 0;
+        }
+
         // ── Coordinate conversion ──
 
         public Vector2 CellToWorld(Vector2Int cell)
@@ -363,13 +402,17 @@ namespace CaoCao.Battle
 
         // ── Terrain info (for HUD) ──
 
-        public TerrainInfo GetTerrainInfo(Vector2Int cell)
+        public TerrainInfo GetTerrainInfo(Vector2Int cell, UnitClass unitClass = UnitClass.Infantry)
         {
             if (_terrainCache.TryGetValue(cell, out var tt) && tt != null)
             {
                 return new TerrainInfo
                 {
                     Name = tt.terrainName,
+                    EffectPercent = tt.GetEffect(unitClass),
+                    MoveCost = tt.GetMoveCost(unitClass),
+                    HealPercent = tt.HealPercent,
+                    // Legacy
                     Hit = tt.hitBonus,
                     Avoid = tt.avoidBonus,
                     HealPerTurn = tt.healPerTurn
@@ -379,6 +422,9 @@ namespace CaoCao.Battle
             return new TerrainInfo
             {
                 Name = _fallbackTerrain.GetValueOrDefault(cell, "plain"),
+                EffectPercent = 100,
+                MoveCost = 1,
+                HealPercent = 0,
                 Hit = 0,
                 Avoid = 0,
                 HealPerTurn = 0
@@ -389,6 +435,10 @@ namespace CaoCao.Battle
     public struct TerrainInfo
     {
         public string Name;
+        public int EffectPercent;   // 发挥效果 (120/110/100/90/80)
+        public int MoveCost;        // 消耗移动力 (1/2/3, -1=不可通行)
+        public int HealPercent;     // 每回合恢复HP% (0=无)
+        // Legacy
         public int Hit;
         public int Avoid;
         public int HealPerTurn;

@@ -329,12 +329,16 @@ namespace CaoCao.Battle
             foreach (var unit in units)
             {
                 if (unit.hp <= 0) continue;
-                var info = gridMap.GetTerrainInfo(unit.cell);
-                if (info.HealPerTurn > 0 && unit.hp < unit.maxHp)
+                var info = gridMap.GetTerrainInfo(unit.cell, unit.unitClass);
+                // Use DB heal% (e.g. 村庄15%, 兵营20%), fallback to legacy HealPerTurn
+                int healAmt = info.HealPercent > 0
+                    ? Mathf.FloorToInt(unit.maxHp * info.HealPercent / 100f)
+                    : info.HealPerTurn;
+                if (healAmt > 0 && unit.hp < unit.maxHp)
                 {
-                    int healed = Mathf.Min(info.HealPerTurn, unit.maxHp - unit.hp);
+                    int healed = Mathf.Min(healAmt, unit.maxHp - unit.hp);
                     unit.hp += healed;
-                    Debug.Log($"[BattleController] {unit.displayName} healed {healed} HP on {info.Name} (now {unit.hp}/{unit.maxHp})");
+                    Debug.Log($"[BattleController] {unit.displayName} 在{info.Name}恢复{healed}HP (now {unit.hp}/{unit.maxHp})");
                 }
             }
         }
@@ -971,10 +975,52 @@ namespace CaoCao.Battle
             _selectedOrigin = unit.cell;
             _movedThisTurn = false;
             ComputeReachable(unit);
-            highlighter.SetMoveCells(new List<Vector2Int>(Reachable.Keys));
+            ShowRangeHighlights(unit, Reachable);
             ShowUnitInfo(unit);
             FocusCameraOn(gridMap.CellToWorld(unit.cell));
             SetState(new UnitSelectedState());
+        }
+
+        /// <summary>
+        /// Show movement + attack range + terrain effects for a unit.
+        /// Used for both player selection and enemy preview.
+        /// </summary>
+        void ShowRangeHighlights(BattleUnit unit, Dictionary<Vector2Int, int> reachable)
+        {
+            // Build effect% dictionary for move cells
+            var moveEffects = new Dictionary<Vector2Int, int>();
+            foreach (var cell in reachable.Keys)
+                moveEffects[cell] = gridMap.GetEffect(cell, unit.unitClass);
+
+            highlighter.SetMoveCells(new List<Vector2Int>(reachable.Keys), moveEffects);
+            // No attack range shown during selection — only shown after clicking "攻击"
+        }
+
+        /// <summary>Preview enemy unit's movement + attack range (read-only, no selection).</summary>
+        public void PreviewEnemyRange(BattleUnit enemy)
+        {
+            // Compute reachable for enemy
+            _pathfinder.MapSize = gridMap.MapSize;
+            _pathfinder.GetCost = c => gridMap.GetCost(c, enemy.unitClass);
+            _pathfinder.IsPassable = c => gridMap.IsPassable(c, enemy.unitClass);
+            _pathfinder.IsBlocked = c => IsOccupied(c, enemy);
+            var result = _pathfinder.ComputeReachable(enemy.cell, enemy.mov);
+
+            // Show blue movement range with effects
+            ShowRangeHighlights(enemy, result.Reachable);
+
+            // Show red attack range around enemy's CURRENT position
+            var atkCells = GetAttackCells(enemy.cell, enemy.atkRange);
+            var atkEffects = new Dictionary<Vector2Int, int>();
+            foreach (var c in atkCells)
+                atkEffects[c] = gridMap.GetEffect(c, enemy.unitClass);
+            highlighter.SetAttackCells(atkCells, atkEffects);
+        }
+
+        /// <summary>Clear enemy range preview.</summary>
+        public void ClearEnemyPreview()
+        {
+            highlighter.ClearAll();
         }
 
         public void ClearSelection()
@@ -1075,7 +1121,12 @@ namespace CaoCao.Battle
         {
             if (SelectedUnit == null) return;
             HideActionMenu();
-            highlighter.SetAttackCells(GetAttackCells(SelectedUnit.cell));
+            // Show red attack range cells around unit's current position
+            var atkCells = GetAttackCells(SelectedUnit.cell, SelectedUnit.atkRange);
+            var atkEffects = new Dictionary<Vector2Int, int>();
+            foreach (var c in atkCells)
+                atkEffects[c] = gridMap.GetEffect(c, SelectedUnit.unitClass);
+            highlighter.SetAttackCells(atkCells, atkEffects);
             SetState(new AttackingState());
         }
 
@@ -1090,7 +1141,9 @@ namespace CaoCao.Battle
         // --- Attack ---
         public bool InAttackRange(Vector2Int a, Vector2Int b)
         {
-            return Mathf.Abs(a.x - b.x) + Mathf.Abs(a.y - b.y) == 1;
+            int dist = Mathf.Abs(a.x - b.x) + Mathf.Abs(a.y - b.y);
+            int range = SelectedUnit != null ? SelectedUnit.atkRange : 1;
+            return dist >= 1 && dist <= range;
         }
 
         public void ExecuteAttack(BattleUnit attacker, BattleUnit target)
@@ -1412,8 +1465,8 @@ namespace CaoCao.Battle
         void ComputeReachable(BattleUnit unit)
         {
             _pathfinder.MapSize = gridMap.MapSize;
-            _pathfinder.GetCost = c => gridMap.GetCost(c, unit.movementType);
-            _pathfinder.IsPassable = c => gridMap.IsPassable(c, unit.movementType);
+            _pathfinder.GetCost = c => gridMap.GetCost(c, unit.unitClass);
+            _pathfinder.IsPassable = c => gridMap.IsPassable(c, unit.unitClass);
             _pathfinder.IsBlocked = c => IsOccupied(c, unit);
             var result = _pathfinder.ComputeReachable(unit.cell, unit.mov);
             Reachable = result.Reachable;
@@ -1462,13 +1515,22 @@ namespace CaoCao.Battle
             return true;
         }
 
-        List<Vector2Int> GetAttackCells(Vector2Int cell)
+        /// <summary>Get all cells within attack range from a position (Manhattan distance 1..atkRange).</summary>
+        List<Vector2Int> GetAttackCells(Vector2Int center, int atkRange = 1)
         {
-            return new List<Vector2Int>
+            var cells = new List<Vector2Int>();
+            for (int dx = -atkRange; dx <= atkRange; dx++)
             {
-                cell + Vector2Int.up, cell + Vector2Int.down,
-                cell + Vector2Int.left, cell + Vector2Int.right
-            };
+                for (int dy = -atkRange; dy <= atkRange; dy++)
+                {
+                    int dist = Mathf.Abs(dx) + Mathf.Abs(dy);
+                    if (dist < 1 || dist > atkRange) continue;
+                    var c = center + new Vector2Int(dx, dy);
+                    if (gridMap.IsInBounds(c))
+                        cells.Add(c);
+                }
+            }
+            return cells;
         }
 
         public void UpdateHover(Vector2Int cell)
@@ -1603,6 +1665,14 @@ namespace CaoCao.Battle
             unit.team = team;
             unit.tileSize = tileSize;
             unit.cell = cell;
+            // Demo: default to cavalry for testing terrain effects
+            unit.unitClass = Common.UnitClass.Cavalry;
+            unit.movementType = Common.MovementType.Cavalry;
+            unit.displayName = $"{(team == UnitTeam.Player ? "我军" : "敌军")}骑兵";
+            unit.unitTypeName = "骑兵";
+            unit.mov = 7;
+            unit.atkRange = 1;
+            Debug.Log($"[SpawnUnit] {unit.displayName} at {cell}, class={unit.unitClass}, atkRange={unit.atkRange}, mov={unit.mov}");
         }
 
         void SyncMapSize()

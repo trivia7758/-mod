@@ -12,6 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: c088c22bf3d987c44998f0ef9554a329, type: 3}
   m_Name: forest
   m_EditorClassIdentifier: Assembly-CSharp::CaoCao.Battle.TerrainType
+  terrainId: forest
   terrainName: "\u68EE\u6797"
   defaultMovementCost: 2
   movementCosts:

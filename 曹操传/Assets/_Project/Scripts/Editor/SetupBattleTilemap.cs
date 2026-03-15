@@ -215,6 +215,27 @@ namespace CaoCao.Editor
             Debug.Log("[SetupBattleTilemap] Done! Now open Window > 2D > Tile Palette to paint terrain.");
         }
 
+        // ── Fix existing TerrainType assets: set terrainId from asset file name ──
+        [MenuItem("CaoCao/Battle Tilemap/Fix TerrainType IDs")]
+        static void FixTerrainTypeIds()
+        {
+            var allTerrains = Resources.LoadAll<TerrainType>("Data/Terrains");
+            int fixed_ = 0;
+            foreach (var tt in allTerrains)
+            {
+                // Asset name = file name without extension (e.g. "plain", "forest")
+                if (tt.terrainId != tt.name)
+                {
+                    tt.terrainId = tt.name;
+                    EditorUtility.SetDirty(tt);
+                    fixed_++;
+                    Debug.Log($"[FixTerrainTypeIDs] {tt.name}: terrainId = \"{tt.terrainId}\", terrainName = \"{tt.terrainName}\"");
+                }
+            }
+            AssetDatabase.SaveAssets();
+            Debug.Log($"[FixTerrainTypeIDs] Fixed {fixed_}/{allTerrains.Length} TerrainType assets.");
+        }
+
         // ── Toggle overlay visibility ──
         [MenuItem("CaoCao/Battle Tilemap/Toggle Terrain Overlay")]
         static void ToggleTerrainOverlay()
@@ -325,6 +346,7 @@ namespace CaoCao.Editor
                 AssetDatabase.CreateAsset(asset, path);
             }
 
+            asset.terrainId = id;
             asset.terrainName = displayName;
             asset.defaultMovementCost = defaultCost;
             asset.hitBonus = hit;

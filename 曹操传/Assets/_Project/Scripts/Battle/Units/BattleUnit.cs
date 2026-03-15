@@ -23,9 +23,11 @@ namespace CaoCao.Battle
         public int atk = 6;
         public int def = 2;
         public int mov = 5;
+        public int atkRange = 1;       // 攻击距离 (1=近战, 2+=远程弓兵/炮车)
 
         [Header("Movement")]
         public MovementType movementType = MovementType.Infantry;
+        public UnitClass unitClass = UnitClass.Infantry;
 
         [Header("State")]
         public UnitTeam team = UnitTeam.Player;

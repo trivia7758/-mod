@@ -13,6 +13,7 @@ namespace CaoCao.Common
 
     /// <summary>
     /// Unit movement class, affects terrain traversal rules.
+    /// (Legacy enum — use UnitClass for full terrain lookups)
     /// </summary>
     public enum MovementType
     {
@@ -20,6 +21,39 @@ namespace CaoCao.Common
         Cavalry,    // 骑兵
         Archer,     // 弓兵
         Naval       // 水军
+    }
+
+    /// <summary>
+    /// All unit classes in 曹操传. Order matches terrain_data.json arrays.
+    /// Standard 13 classes + 9 special enemy classes = 22 total.
+    /// </summary>
+    public enum UnitClass
+    {
+        // ── Standard 13 ──
+        Lord              = 0,   // 君主
+        Infantry          = 1,   // 步兵
+        Archer            = 2,   // 弓兵
+        Cavalry           = 3,   // 骑兵
+        MountedArcher     = 4,   // 弓骑
+        Catapult          = 5,   // 炮车
+        Martial           = 6,   // 武道
+        Bandit            = 7,   // 贼兵
+        Strategist        = 8,   // 策士
+        Geomancer         = 9,   // 风水
+        Taoist            = 10,  // 道士
+        MountedStrategist = 11,  // 骑策
+        Dancer            = 12,  // 舞娘
+
+        // ── Special / Enemy-only 9 ──
+        XiLiangCavalry    = 13,  // 西凉骑兵
+        YellowTurban      = 14,  // 黄巾贼
+        Pirate            = 15,  // 海盗
+        Admiral            = 16,  // 都督
+        Sorcerer          = 17,  // 咒术士
+        BearTamer         = 18,  // 驯熊师
+        TigerTamer        = 19,  // 驯虎师
+        ClayGolem         = 20,  // 土偶
+        WoodGolem         = 21   // 木偶
     }
 
     /// <summary>

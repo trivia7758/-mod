@@ -11,7 +11,8 @@ namespace CaoCao.Battle
             var inRange = new List<BattleUnit>();
             foreach (var p in players)
             {
-                if (Manhattan(unit.cell, p.cell) == 1)
+                int dist = Manhattan(unit.cell, p.cell);
+                if (dist >= 1 && dist <= unit.atkRange)
                     inRange.Add(p);
             }
             if (inRange.Count == 0) return null;
@@ -33,8 +34,8 @@ namespace CaoCao.Battle
                 if (d < bestD) { bestD = d; closest = p; }
             }
 
-            pathfinder.GetCost = c => map.GetCost(c, unit.movementType);
-            pathfinder.IsPassable = c => map.IsPassable(c, unit.movementType);
+            pathfinder.GetCost = c => map.GetCost(c, unit.unitClass);
+            pathfinder.IsPassable = c => map.IsPassable(c, unit.unitClass);
             pathfinder.IsBlocked = c => IsOccupied(c, unit, players, enemies);
             pathfinder.MapSize = map.MapSize;
 
