@@ -11,6 +11,8 @@ namespace CaoCao.Battle.States
 
         public void HandleClick(Vector2Int cell)
         {
+            _ctrl.HideTerrainInfo();
+
             if (!_ctrl.GridMap.IsInBounds(cell))
             {
                 _ctrl.ClearSelection();

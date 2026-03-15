@@ -1,18 +1,31 @@
 using System;
 using System.Collections;
 using UnityEngine;
+using CaoCao.Common;
 using CaoCao.Data;
 
 namespace CaoCao.Battle
 {
     public class BattleUnit : MonoBehaviour
     {
+        [Header("Identity")]
+        public string displayName = "";
+        public string unitTypeName = "";   // 兵种名 e.g. "轻步兵"
+        public int level = 1;
+        public int exp = 0;
+        public Sprite portrait;            // 头像
+
         [Header("Stats")]
         public int maxHp = 20;
         public int hp = 20;
+        public int maxMp = 0;
+        public int mp = 0;
         public int atk = 6;
         public int def = 2;
         public int mov = 5;
+
+        [Header("Movement")]
+        public MovementType movementType = MovementType.Infantry;
 
         [Header("State")]
         public UnitTeam team = UnitTeam.Player;
@@ -25,7 +38,8 @@ namespace CaoCao.Battle
         public event Action<BattleUnit> OnDied;
 
         SpriteRenderer _sprite;
-        TMPro.TMP_Text _hpLabel;
+        SpriteRenderer _hpBarBg;
+        SpriteRenderer _hpBarFill;
         BattleUnitAnimator _animator;
 
         public BattleUnitAnimator Animator => _animator;
@@ -51,10 +65,11 @@ namespace CaoCao.Battle
                 Destroy(_sprite.gameObject);
                 _sprite = null;
             }
-            if (_hpLabel != null)
+            if (_hpBarBg != null)
             {
-                Destroy(_hpLabel.transform.parent.gameObject);
-                _hpLabel = null;
+                Destroy(_hpBarBg.gameObject);
+                _hpBarBg = null;
+                _hpBarFill = null;
             }
             _animator = null;
             EnsureVisual();
@@ -100,7 +115,7 @@ namespace CaoCao.Battle
             else
                 _sprite.color = Color.white;
 
-            EnsureHpLabel();
+            EnsureHpBar();
         }
 
         void EnsureAnimator()
@@ -112,34 +127,41 @@ namespace CaoCao.Battle
             _animator.Init(_sprite);
         }
 
-        void EnsureHpLabel()
+        void EnsureHpBar()
         {
-            _hpLabel = GetComponentInChildren<TMPro.TMP_Text>();
-            if (_hpLabel == null)
-            {
-                var canvasGo = new GameObject("HPCanvas");
-                canvasGo.transform.SetParent(transform);
-                canvasGo.transform.localPosition = new Vector3(0, tileSize.y * 0.55f, 0);
-                var canvas = canvasGo.AddComponent<Canvas>();
-                canvas.renderMode = RenderMode.WorldSpace;
-                canvas.sortingOrder = 10;
-                var rt = canvasGo.GetComponent<RectTransform>();
-                rt.sizeDelta = new Vector2(80, 20);
-                rt.localScale = new Vector3(0.5f, 0.5f, 1f);
+            if (_hpBarBg != null) return;
 
-                var textGo = new GameObject("HpText");
-                textGo.transform.SetParent(canvasGo.transform);
-                _hpLabel = textGo.AddComponent<TMPro.TextMeshProUGUI>();
-                _hpLabel.alignment = TMPro.TextAlignmentOptions.Center;
-                _hpLabel.fontSize = 14;
-                _hpLabel.color = team == UnitTeam.Player ? new Color(0.4f, 0.9f, 1f) : new Color(1f, 0.6f, 0.5f);
-                var textRt = textGo.GetComponent<RectTransform>();
-                textRt.anchorMin = Vector2.zero;
-                textRt.anchorMax = Vector2.one;
-                textRt.offsetMin = Vector2.zero;
-                textRt.offsetMax = Vector2.zero;
-            }
-            UpdateHpLabel();
+            // Create a 1x1 white pixel texture shared by bg and fill
+            var whiteTex = new Texture2D(1, 1);
+            whiteTex.SetPixel(0, 0, Color.white);
+            whiteTex.Apply();
+            var whiteSprite = Sprite.Create(whiteTex, new Rect(0, 0, 1, 1), new Vector2(0, 0.5f), 1);
+
+            float barW = tileSize.x * 0.7f;  // ~34px wide
+            float barH = 4f;                   // 4px tall
+            float yOffset = tileSize.y * 0.55f;
+
+            // Background (dark)
+            var bgGo = new GameObject("HpBarBg");
+            bgGo.transform.SetParent(transform);
+            bgGo.transform.localPosition = new Vector3(-barW * 0.5f, yOffset, 0);
+            _hpBarBg = bgGo.AddComponent<SpriteRenderer>();
+            _hpBarBg.sprite = whiteSprite;
+            _hpBarBg.color = new Color(0.15f, 0.15f, 0.15f, 0.85f);
+            _hpBarBg.sortingOrder = 10;
+            bgGo.transform.localScale = new Vector3(barW, barH, 1);
+
+            // Fill (green)
+            var fillGo = new GameObject("HpBarFill");
+            fillGo.transform.SetParent(transform);
+            fillGo.transform.localPosition = new Vector3(-barW * 0.5f, yOffset, 0);
+            _hpBarFill = fillGo.AddComponent<SpriteRenderer>();
+            _hpBarFill.sprite = whiteSprite;
+            _hpBarFill.color = new Color(0.1f, 0.85f, 0.2f);
+            _hpBarFill.sortingOrder = 11;
+            fillGo.transform.localScale = new Vector3(barW, barH, 1);
+
+            UpdateHpBar();
         }
 
         void UpdatePosition()
@@ -160,7 +182,7 @@ namespace CaoCao.Battle
             {
                 cell = target;
                 UpdatePosition();
-                UpdateHpLabel();
+                UpdateHpBar();
                 _animator?.StopWalking();
                 OnMoved?.Invoke(this);
                 return;
@@ -213,7 +235,7 @@ namespace CaoCao.Battle
 
             // Stop walk animation, return to idle facing last movement direction
             _animator?.StopWalking();
-            UpdateHpLabel();
+            UpdateHpBar();
             OnMoved?.Invoke(this);
         }
 
@@ -236,7 +258,7 @@ namespace CaoCao.Battle
 
             int dmg = Mathf.Max(1, atk - target.def);
             target.hp -= dmg;
-            target.UpdateHpLabel();
+            target.UpdateHpBar();
 
             // Target plays hit animation
             target._animator?.PlayHit();
@@ -245,16 +267,16 @@ namespace CaoCao.Battle
             if (target.hp <= 0)
             {
                 target.hp = 0;
-                target.UpdateHpLabel();
+                target.UpdateHpBar();
 
                 // Play death animation then notify
                 if (target._animator != null)
                 {
                     target._animator.PlayDeath(() =>
                     {
-                        // Hide HP label after death anim
-                        var canvas = target.GetComponentInChildren<Canvas>();
-                        if (canvas != null) canvas.gameObject.SetActive(false);
+                        // Hide HP bar after death anim
+                        if (target._hpBarBg != null) target._hpBarBg.gameObject.SetActive(false);
+                        if (target._hpBarFill != null) target._hpBarFill.gameObject.SetActive(false);
                     });
                 }
 
@@ -288,10 +310,19 @@ namespace CaoCao.Battle
             }
         }
 
-        void UpdateHpLabel()
+        void UpdateHpBar()
         {
-            if (_hpLabel != null)
-                _hpLabel.text = $"HP {hp}/{maxHp}";
+            if (_hpBarFill == null) return;
+            float ratio = maxHp > 0 ? (float)hp / maxHp : 0;
+            float barW = tileSize.x * 0.7f;
+            var s = _hpBarFill.transform.localScale;
+            s.x = barW * ratio;
+            _hpBarFill.transform.localScale = s;
+
+            // Color: green > yellow > red based on HP ratio
+            _hpBarFill.color = ratio > 0.5f ? new Color(0.1f, 0.85f, 0.2f)
+                             : ratio > 0.25f ? new Color(0.9f, 0.8f, 0.1f)
+                             : new Color(0.9f, 0.15f, 0.1f);
         }
 
         public void InitFromDefinition(BattleUnitDefinition def)
@@ -313,12 +344,62 @@ namespace CaoCao.Battle
         {
             if (runtime == null || heroDef == null) return;
 
+            // Identity
+            displayName = heroDef.displayName;
+            portrait = heroDef.portrait;
+            level = runtime.level;
+            exp = runtime.exp;
+            if (heroDef.defaultUnitType != null)
+            {
+                unitTypeName = heroDef.defaultUnitType.displayName;
+                movementType = heroDef.defaultUnitType.movementType;
+            }
+
+            // Try to load portrait from Resources if not assigned in definition
+            if (portrait == null)
+                portrait = LoadPortraitFromResources(heroDef.id);
+
+            // Stats
             maxHp = runtime.maxHp;
             hp = runtime.currentHp;
+            maxMp = runtime.maxMp;
+            mp = runtime.currentMp;
             atk = runtime.atk;
             this.def = runtime.def;
             mov = runtime.mov;
             team = UnitTeam.Player;
+        }
+
+        /// <summary>
+        /// Try to load a portrait sprite from Resources/Portraits/ folder.
+        /// Tries heroId first, then known aliases.
+        /// </summary>
+        static Sprite LoadPortraitFromResources(string heroId)
+        {
+            // Try direct hero ID match
+            var sprite = Resources.Load<Sprite>($"Portraits/{heroId}");
+            if (sprite != null) return sprite;
+
+            // Known hero → portrait filename mapping
+            string alias = heroId switch
+            {
+                "cao_cao" => "nanzhu",      // 男主 = 曹操
+                _ => null
+            };
+            if (alias != null)
+            {
+                sprite = Resources.Load<Sprite>($"Portraits/{alias}");
+                if (sprite != null) return sprite;
+            }
+
+            // Try loading as Texture2D and create sprite (for .jpg files)
+            var tex = Resources.Load<Texture2D>($"Portraits/{heroId}");
+            if (tex == null && alias != null)
+                tex = Resources.Load<Texture2D>($"Portraits/{alias}");
+            if (tex != null)
+                return Sprite.Create(tex, new Rect(0, 0, tex.width, tex.height), new Vector2(0.5f, 0.5f));
+
+            return null;
         }
 
         static FacingDirection GetDirection(Vector2Int from, Vector2Int to)

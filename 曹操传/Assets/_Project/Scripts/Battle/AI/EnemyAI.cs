@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using UnityEngine;
+using CaoCao.Common;
 
 namespace CaoCao.Battle
 {
@@ -32,8 +33,8 @@ namespace CaoCao.Battle
                 if (d < bestD) { bestD = d; closest = p; }
             }
 
-            pathfinder.GetCost = c => map.GetCost(c);
-            pathfinder.IsPassable = c => map.IsPassable(c);
+            pathfinder.GetCost = c => map.GetCost(c, unit.movementType);
+            pathfinder.IsPassable = c => map.IsPassable(c, unit.movementType);
             pathfinder.IsBlocked = c => IsOccupied(c, unit, players, enemies);
             pathfinder.MapSize = map.MapSize;
 

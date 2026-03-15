@@ -5,6 +5,7 @@ using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
 using CaoCao.Battle.States;
+using CaoCao.Common;
 using CaoCao.Core;
 using CaoCao.Data;
 
@@ -21,6 +22,8 @@ namespace CaoCao.Battle
         [SerializeField] BattleActionMenu actionMenu;
         [SerializeField] BattleHUD hud;
 
+        BattleUnitInfoPanel _unitInfoPanel;
+
         public BattleGridMap GridMap => gridMap;
         public TileHighlighter Highlighter => highlighter;
         public BattleUnit SelectedUnit { get; private set; }
@@ -36,16 +39,35 @@ namespace CaoCao.Battle
         bool _battleEnded;
         int _turnCount = 1;
 
+        // Map background
+        Sprite _mapBackground;
+
+        // Turn UI
+        GameObject _endTurnBtnGo;
+        Canvas _turnBannerCanvas;
+
+        // Terrain Info Panel
+        GameObject _terrainInfoPanelGo;
+        TMP_Text _terrainInfoName;
+        TMP_Text _terrainInfoCoord;
+        TMP_Text _terrainInfoHeal;
+
+        // System Menu
+        BattleSystemMenu _systemMenu;
+
         void Start()
         {
             EnsureBattleComponents();
-            SetupCamera();
             EnsureInputManager();
 
             // Try deployment-based spawning first, fall back to demo
             if (!SpawnFromDeployment())
                 SpawnDemoUnits();
+
+            // Setup background and camera after spawning (battleDef may set background)
+            EnsureMapBackground();
             SyncMapSize();
+            SetupCamera();
 
             // Subscribe to unit death for cleanup
             SubscribeUnitDeathEvents();
@@ -57,8 +79,30 @@ namespace CaoCao.Battle
                 actionMenu.Hide();
             }
 
+            // Create unit info panel
+            EnsureUnitInfoPanel();
+
+            // Create end turn button
+            BuildEndTurnButton();
+
+            // Create system menu (save/load/settings)
+            BuildSystemMenu();
+
             EventBus.BattleStarted();
             Debug.Log($"[BattleController] Battle started! Players={GetUnitsByTeam(UnitTeam.Player).Count}, Enemies={GetUnitsByTeam(UnitTeam.Enemy).Count}");
+
+            // Show initial turn banner then go to idle
+            StartCoroutine(StartBattleSequence());
+        }
+
+        IEnumerator StartBattleSequence()
+        {
+            SetState(new AnimatingState());
+            SetEndTurnButtonVisible(false);
+            yield return StartCoroutine(ShowTurnBanner($"第{_turnCount}回合 - 我方回合"));
+            // Heal player units on healing terrain at turn start
+            ApplyTerrainHealing(UnitTeam.Player);
+            SetEndTurnButtonVisible(true);
             SetState(new IdleState());
         }
 
@@ -142,14 +186,396 @@ namespace CaoCao.Battle
         /// - EnemyUnits: empty container (enemies are spawned under unitsRoot)
         /// - BattleCanvas: has broken UI elements with white backgrounds
         /// </summary>
+        // --- Unit Info Panel ---
+        void EnsureUnitInfoPanel()
+        {
+            if (_unitInfoPanel != null) return;
+
+            // Create a dedicated overlay canvas for the info panel
+            var canvasGo = new GameObject("BattleInfoCanvas");
+            var canvas = canvasGo.AddComponent<Canvas>();
+            canvas.renderMode = RenderMode.ScreenSpaceOverlay;
+            canvas.sortingOrder = 20;
+            var scaler = canvasGo.AddComponent<CanvasScaler>();
+            scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+            scaler.referenceResolution = new Vector2(1280, 720);
+            canvasGo.AddComponent<GraphicRaycaster>();
+
+            // Create panel as child of canvas (with RectTransform)
+            var panelGo = new GameObject("BattleUnitInfoPanel", typeof(RectTransform));
+            panelGo.transform.SetParent(canvasGo.transform, false);
+            _unitInfoPanel = panelGo.AddComponent<BattleUnitInfoPanel>();
+        }
+
+        public void ShowUnitInfo(BattleUnit unit)
+        {
+            if (_unitInfoPanel == null) EnsureUnitInfoPanel();
+            _unitInfoPanel.Show(unit);
+        }
+
+        public void HideUnitInfo()
+        {
+            if (_unitInfoPanel != null) _unitInfoPanel.Hide();
+        }
+
+        // --- Terrain Info Panel ---
+        void EnsureTerrainInfoPanel()
+        {
+            if (_terrainInfoPanelGo != null) return;
+
+            var canvasGo = new GameObject("TerrainInfoCanvas");
+            var canvas = canvasGo.AddComponent<Canvas>();
+            canvas.renderMode = RenderMode.ScreenSpaceOverlay;
+            canvas.sortingOrder = 18;
+            var scaler = canvasGo.AddComponent<CanvasScaler>();
+            scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+            scaler.referenceResolution = new Vector2(1280, 720);
+            scaler.matchWidthOrHeight = 0.5f;
+
+            // Panel anchored bottom-left
+            _terrainInfoPanelGo = new GameObject("TerrainInfoPanel", typeof(RectTransform));
+            _terrainInfoPanelGo.transform.SetParent(canvasGo.transform, false);
+            var rt = _terrainInfoPanelGo.GetComponent<RectTransform>();
+            rt.anchorMin = new Vector2(0, 0);
+            rt.anchorMax = new Vector2(0, 0);
+            rt.pivot = new Vector2(0, 0);
+            rt.anchoredPosition = new Vector2(16, 16);
+            rt.sizeDelta = new Vector2(220, 90);
+
+            var bg = _terrainInfoPanelGo.AddComponent<Image>();
+            bg.color = new Color(0.08f, 0.06f, 0.14f, 0.88f);
+            var outline = _terrainInfoPanelGo.AddComponent<Outline>();
+            outline.effectColor = new Color(0.6f, 0.5f, 0.25f);
+            outline.effectDistance = new Vector2(1, -1);
+
+            // Terrain name label
+            _terrainInfoName = CreateTerrainLabel(_terrainInfoPanelGo.transform, "TerrainName",
+                new Vector2(10, -8), new Vector2(210, 28), 22, new Color(1f, 0.9f, 0.6f));
+
+            // Coordinates label
+            _terrainInfoCoord = CreateTerrainLabel(_terrainInfoPanelGo.transform, "TerrainCoord",
+                new Vector2(10, -34), new Vector2(210, 22), 16, new Color(0.75f, 0.75f, 0.75f));
+
+            // Heal label (hidden by default)
+            _terrainInfoHeal = CreateTerrainLabel(_terrainInfoPanelGo.transform, "TerrainHeal",
+                new Vector2(10, -58), new Vector2(210, 22), 16, new Color(0.3f, 1f, 0.4f));
+
+            _terrainInfoPanelGo.SetActive(false);
+        }
+
+        TMP_Text CreateTerrainLabel(Transform parent, string name, Vector2 pos, Vector2 size, float fontSize, Color color)
+        {
+            var go = new GameObject(name, typeof(RectTransform));
+            go.transform.SetParent(parent, false);
+            var rt = go.GetComponent<RectTransform>();
+            rt.anchorMin = new Vector2(0, 1);
+            rt.anchorMax = new Vector2(0, 1);
+            rt.pivot = new Vector2(0, 1);
+            rt.anchoredPosition = pos;
+            rt.sizeDelta = size;
+            var tmp = go.AddComponent<TextMeshProUGUI>();
+            tmp.fontSize = fontSize;
+            tmp.color = color;
+            tmp.alignment = TextAlignmentOptions.Left;
+            return tmp;
+        }
+
+        public void ShowTerrainInfo(Vector2Int cell)
+        {
+            EnsureTerrainInfoPanel();
+
+            bool inBounds = gridMap.IsInBounds(cell);
+            Debug.Log($"[TerrainInfo] cell={cell}, inBounds={inBounds}, mapSize={gridMap.MapSize}, origin={gridMap.Origin}");
+
+            if (inBounds)
+            {
+                var info = gridMap.GetTerrainInfo(cell);
+                _terrainInfoName.text = info.Name;
+                _terrainInfoCoord.text = $"坐标: ({cell.x}, {cell.y})";
+
+                if (info.HealPerTurn > 0)
+                {
+                    _terrainInfoHeal.text = $"可恢复 (每回合 +{info.HealPerTurn} HP)";
+                    _terrainInfoHeal.gameObject.SetActive(true);
+                    _terrainInfoPanelGo.GetComponent<RectTransform>().sizeDelta = new Vector2(220, 90);
+                }
+                else
+                {
+                    _terrainInfoHeal.gameObject.SetActive(false);
+                    _terrainInfoPanelGo.GetComponent<RectTransform>().sizeDelta = new Vector2(220, 66);
+                }
+            }
+            else
+            {
+                _terrainInfoName.text = "界外";
+                _terrainInfoCoord.text = $"坐标: ({cell.x}, {cell.y})";
+                _terrainInfoHeal.gameObject.SetActive(false);
+                _terrainInfoPanelGo.GetComponent<RectTransform>().sizeDelta = new Vector2(220, 66);
+            }
+
+            _terrainInfoPanelGo.SetActive(true);
+        }
+
+        public void HideTerrainInfo()
+        {
+            if (_terrainInfoPanelGo != null)
+                _terrainInfoPanelGo.SetActive(false);
+        }
+
+        // --- Heal on Turn Start ---
+        void ApplyTerrainHealing(UnitTeam team)
+        {
+            var units = GetUnitsByTeam(team);
+            foreach (var unit in units)
+            {
+                if (unit.hp <= 0) continue;
+                var info = gridMap.GetTerrainInfo(unit.cell);
+                if (info.HealPerTurn > 0 && unit.hp < unit.maxHp)
+                {
+                    int healed = Mathf.Min(info.HealPerTurn, unit.maxHp - unit.hp);
+                    unit.hp += healed;
+                    Debug.Log($"[BattleController] {unit.displayName} healed {healed} HP on {info.Name} (now {unit.hp}/{unit.maxHp})");
+                }
+            }
+        }
+
+        // --- End Turn Button ---
+        void BuildEndTurnButton()
+        {
+            var canvasGo = new GameObject("EndTurnCanvas");
+            var canvas = canvasGo.AddComponent<Canvas>();
+            canvas.renderMode = RenderMode.ScreenSpaceOverlay;
+            canvas.sortingOrder = 15;
+            var scaler = canvasGo.AddComponent<CanvasScaler>();
+            scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+            scaler.referenceResolution = new Vector2(1280, 720);
+            scaler.matchWidthOrHeight = 0.5f;
+            canvasGo.AddComponent<GraphicRaycaster>();
+
+            _endTurnBtnGo = new GameObject("EndTurnBtn", typeof(RectTransform));
+            _endTurnBtnGo.transform.SetParent(canvasGo.transform, false);
+            var rt = _endTurnBtnGo.GetComponent<RectTransform>();
+            rt.anchorMin = new Vector2(1, 0);
+            rt.anchorMax = new Vector2(1, 0);
+            rt.pivot = new Vector2(1, 0);
+            rt.anchoredPosition = new Vector2(-16, 16);
+            rt.sizeDelta = new Vector2(160, 48);
+
+            var img = _endTurnBtnGo.AddComponent<Image>();
+            img.color = new Color(0.12f, 0.08f, 0.18f, 0.9f);
+            var outline = _endTurnBtnGo.AddComponent<Outline>();
+            outline.effectColor = new Color(0.8f, 0.65f, 0.3f);
+            outline.effectDistance = new Vector2(1, -1);
+
+            var btn = _endTurnBtnGo.AddComponent<Button>();
+            btn.targetGraphic = img;
+            var colors = btn.colors;
+            colors.highlightedColor = new Color(0.2f, 0.15f, 0.3f);
+            colors.pressedColor = new Color(0.3f, 0.2f, 0.1f);
+            btn.colors = colors;
+            btn.onClick.AddListener(ForceEndPlayerTurn);
+
+            var textGo = new GameObject("Text", typeof(RectTransform));
+            textGo.transform.SetParent(_endTurnBtnGo.transform, false);
+            var textRt = textGo.GetComponent<RectTransform>();
+            textRt.anchorMin = Vector2.zero;
+            textRt.anchorMax = Vector2.one;
+            textRt.offsetMin = Vector2.zero;
+            textRt.offsetMax = Vector2.zero;
+            var tmp = textGo.AddComponent<TextMeshProUGUI>();
+            tmp.text = "结束回合";
+            tmp.fontSize = 24;
+            tmp.alignment = TextAlignmentOptions.Center;
+            tmp.color = new Color(0.8f, 0.65f, 0.3f);
+        }
+
+        void ForceEndPlayerTurn()
+        {
+            if (_currentTeam != "player" || _battleEnded) return;
+            if (_currentState is EnemyTurnState || _currentState is AnimatingState) return;
+
+            ClearSelection();
+            highlighter.ClearAll();
+
+            foreach (var u in GetUnitsByTeam(UnitTeam.Player))
+            {
+                if (!u.acted) u.Wait();
+            }
+
+            StartCoroutine(RunEnemyTurn());
+        }
+
+        void SetEndTurnButtonVisible(bool visible)
+        {
+            if (_endTurnBtnGo != null)
+                _endTurnBtnGo.SetActive(visible);
+        }
+
+        // --- System Menu (Save/Load/Settings) ---
+
+        void BuildSystemMenu()
+        {
+            var menuGo = new GameObject("BattleSystemMenu");
+            menuGo.transform.SetParent(transform);
+            _systemMenu = menuGo.AddComponent<BattleSystemMenu>();
+            _systemMenu.Build();
+
+            _systemMenu.OnResumed += () =>
+            {
+                Debug.Log("[BattleController] Resumed from system menu");
+            };
+
+            _systemMenu.OnReturnToMainMenu += () =>
+            {
+                Debug.Log("[BattleController] Returning to main menu");
+                var loader = ServiceLocator.Get<SceneLoader>();
+                if (loader != null)
+                    loader.LoadScene("MainMenu");
+                else
+                    UnityEngine.SceneManagement.SceneManager.LoadScene("MainMenu");
+            };
+
+            // Build the "系统" trigger button on the end-turn canvas
+            BuildSystemButton();
+        }
+
+        void BuildSystemButton()
+        {
+            // Find the end-turn canvas to add the system button next to it
+            Canvas targetCanvas = null;
+            if (_endTurnBtnGo != null)
+                targetCanvas = _endTurnBtnGo.GetComponentInParent<Canvas>();
+
+            // If no canvas found, create one
+            if (targetCanvas == null)
+            {
+                var canvasGo = new GameObject("SystemBtnCanvas");
+                canvasGo.transform.SetParent(transform);
+                targetCanvas = canvasGo.AddComponent<Canvas>();
+                targetCanvas.renderMode = RenderMode.ScreenSpaceOverlay;
+                targetCanvas.sortingOrder = 15;
+                var scaler = canvasGo.AddComponent<CanvasScaler>();
+                scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+                scaler.referenceResolution = new Vector2(1280, 720);
+                scaler.matchWidthOrHeight = 0.5f;
+                canvasGo.AddComponent<GraphicRaycaster>();
+            }
+
+            // System button — top-right corner
+            var btnGo = new GameObject("SystemBtn", typeof(RectTransform));
+            btnGo.transform.SetParent(targetCanvas.transform, false);
+            var rt = btnGo.GetComponent<RectTransform>();
+            rt.anchorMin = new Vector2(1, 1);
+            rt.anchorMax = new Vector2(1, 1);
+            rt.pivot = new Vector2(1, 1);
+            rt.anchoredPosition = new Vector2(-16, -16);
+            rt.sizeDelta = new Vector2(100, 42);
+
+            var img = btnGo.AddComponent<Image>();
+            img.color = new Color(0.12f, 0.08f, 0.18f, 0.9f);
+            var outline = btnGo.AddComponent<Outline>();
+            outline.effectColor = new Color(0.8f, 0.65f, 0.3f);
+            outline.effectDistance = new Vector2(1, -1);
+
+            var btn = btnGo.AddComponent<Button>();
+            btn.targetGraphic = img;
+            var colors = btn.colors;
+            colors.highlightedColor = new Color(0.2f, 0.15f, 0.3f);
+            colors.pressedColor = new Color(0.3f, 0.2f, 0.1f);
+            btn.colors = colors;
+            btn.onClick.AddListener(() => _systemMenu?.Toggle());
+
+            var textGo = new GameObject("Text", typeof(RectTransform));
+            textGo.transform.SetParent(btnGo.transform, false);
+            var textRt = textGo.GetComponent<RectTransform>();
+            textRt.anchorMin = Vector2.zero;
+            textRt.anchorMax = Vector2.one;
+            textRt.offsetMin = Vector2.zero;
+            textRt.offsetMax = Vector2.zero;
+            var tmp = textGo.AddComponent<TextMeshProUGUI>();
+            tmp.text = "系统";
+            tmp.fontSize = 22;
+            tmp.alignment = TextAlignmentOptions.Center;
+            tmp.color = new Color(0.8f, 0.65f, 0.3f);
+        }
+
+        // --- Turn Banner ---
+        IEnumerator ShowTurnBanner(string text)
+        {
+            // Create temporary overlay canvas
+            var canvasGo = new GameObject("TurnBannerCanvas");
+            _turnBannerCanvas = canvasGo.AddComponent<Canvas>();
+            _turnBannerCanvas.renderMode = RenderMode.ScreenSpaceOverlay;
+            _turnBannerCanvas.sortingOrder = 100;
+            var scaler = canvasGo.AddComponent<CanvasScaler>();
+            scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+            scaler.referenceResolution = new Vector2(1280, 720);
+            scaler.matchWidthOrHeight = 0.5f;
+
+            // Semi-transparent background strip (center of screen)
+            var bgGo = new GameObject("BannerBg", typeof(RectTransform));
+            bgGo.transform.SetParent(canvasGo.transform, false);
+            var bgRt = bgGo.GetComponent<RectTransform>();
+            bgRt.anchorMin = new Vector2(0, 0.38f);
+            bgRt.anchorMax = new Vector2(1, 0.62f);
+            bgRt.offsetMin = Vector2.zero;
+            bgRt.offsetMax = Vector2.zero;
+            var bgImg = bgGo.AddComponent<Image>();
+            bgImg.color = new Color(0, 0, 0, 0.75f);
+
+            // Banner text
+            var textGo = new GameObject("BannerText", typeof(RectTransform));
+            textGo.transform.SetParent(bgGo.transform, false);
+            var textRt = textGo.GetComponent<RectTransform>();
+            textRt.anchorMin = Vector2.zero;
+            textRt.anchorMax = Vector2.one;
+            textRt.offsetMin = Vector2.zero;
+            textRt.offsetMax = Vector2.zero;
+            var tmp = textGo.AddComponent<TextMeshProUGUI>();
+            tmp.text = text;
+            tmp.fontSize = 48;
+            tmp.alignment = TextAlignmentOptions.Center;
+            tmp.color = new Color(1f, 0.85f, 0.3f);
+            tmp.fontStyle = FontStyles.Bold;
+
+            // Grab the CanvasGroup for fading
+            var cg = canvasGo.AddComponent<CanvasGroup>();
+            cg.alpha = 0;
+
+            // Fade in
+            float t = 0;
+            while (t < 0.3f)
+            {
+                t += Time.deltaTime;
+                cg.alpha = Mathf.Clamp01(t / 0.3f);
+                yield return null;
+            }
+            cg.alpha = 1;
+
+            // Hold
+            yield return new WaitForSeconds(1.0f);
+
+            // Fade out
+            t = 0;
+            while (t < 0.3f)
+            {
+                t += Time.deltaTime;
+                cg.alpha = 1f - Mathf.Clamp01(t / 0.3f);
+                yield return null;
+            }
+
+            Destroy(canvasGo);
+            _turnBannerCanvas = null;
+        }
+
         void CleanupSceneArtifacts()
         {
-            // FadeOverlay — pure white Image covering screen
+            // FadeOverlay — pure white/dark Image covering screen
             var fadeOverlay = GameObject.Find("FadeOverlay");
             if (fadeOverlay != null)
             {
-                fadeOverlay.SetActive(false);
-                Debug.Log("[BattleController] Disabled FadeOverlay");
+                Destroy(fadeOverlay);
+                Debug.Log("[BattleController] Destroyed FadeOverlay");
             }
 
             // Unused EnemyUnits container
@@ -159,6 +585,66 @@ namespace CaoCao.Battle
                 Destroy(enemyUnits);
                 Debug.Log("[BattleController] Destroyed unused EnemyUnits");
             }
+
+            // Destroy any scene-baked BattleCanvas (broken serialized UI)
+            var battleCanvas = GameObject.Find("BattleCanvas");
+            if (battleCanvas != null)
+            {
+                Destroy(battleCanvas);
+                Debug.Log("[BattleController] Destroyed scene BattleCanvas (using programmatic UI)");
+            }
+        }
+
+        // --- Map Background ---
+        void EnsureMapBackground()
+        {
+            // Try to get background from BattleDefinition
+            if (_mapBackground == null)
+            {
+                var gsm = ServiceLocator.Has<GameStateManager>() ? ServiceLocator.Get<GameStateManager>() : null;
+                var registry = ServiceLocator.Has<GameDataRegistry>() ? ServiceLocator.Get<GameDataRegistry>() : null;
+                if (gsm != null && registry != null)
+                {
+                    var battleDef = registry.GetBattle(gsm.State.currentBattleId);
+                    if (battleDef != null)
+                        _mapBackground = battleDef.battleBackground;
+                }
+            }
+
+            // Fallback: try to load from Resources
+            if (_mapBackground == null)
+                _mapBackground = Resources.Load<Sprite>("Sprites/Battle/level0");
+
+            if (_mapBackground == null)
+            {
+                Debug.LogWarning("[BattleController] No map background found.");
+                return;
+            }
+
+            var bgGo = GameObject.Find("MapBackground");
+            if (bgGo == null) bgGo = new GameObject("MapBackground");
+            var sr = bgGo.GetComponent<SpriteRenderer>();
+            if (sr == null) sr = bgGo.AddComponent<SpriteRenderer>();
+            sr.sprite = _mapBackground;
+            sr.sortingOrder = -100;
+
+            // Position background so its bottom-left corner aligns with the grid Origin.
+            // For any pivot, sprite bottom-left in world = pos - pivot * size
+            // We want bottom-left = Origin, so pos = Origin + pivot * size
+            float ppu = _mapBackground.pixelsPerUnit;
+            float sprW = _mapBackground.rect.width / ppu;
+            float sprH = _mapBackground.rect.height / ppu;
+            float pivotX = _mapBackground.pivot.x / _mapBackground.rect.width; // normalized 0-1
+            float pivotY = _mapBackground.pivot.y / _mapBackground.rect.height;
+
+            Vector2 origin = gridMap != null ? gridMap.Origin : Vector2.zero;
+            bgGo.transform.position = new Vector3(
+                origin.x + pivotX * sprW,
+                origin.y + pivotY * sprH,
+                0
+            );
+
+            Debug.Log($"[BattleController] Map background: {_mapBackground.name} ({sprW}x{sprH} world units, ppu={ppu}), pivot=({pivotX:F2},{pivotY:F2}), pos={bgGo.transform.position}, gridOrigin={origin}");
         }
 
         // --- Fallback Action Menu (built programmatically) ---
@@ -236,29 +722,45 @@ namespace CaoCao.Battle
             return btn;
         }
 
+        // Camera drag state
+        bool _isDragging;
+        bool _pendingClick; // true = mouse went down, waiting to see if it's a click or drag
+        Vector3 _dragStartMouse;
+        Vector3 _dragStartCamPos;
+        const float DragThreshold = 8f; // pixels before drag starts
+
         void Update()
         {
             if (_battleEnded) return;
+
+            // Block all battle input when system menu is open
+            if (_systemMenu != null && _systemMenu.IsOpen) return;
+
+            // Camera drag/scroll — always active
+            HandleCameraDrag();
+
+            var scrollMouse = UnityEngine.InputSystem.Mouse.current;
+            if (scrollMouse != null)
+            {
+                float scroll = scrollMouse.scroll.ReadValue().y;
+                if (Mathf.Abs(scroll) > 0.01f)
+                {
+                    var cam = Camera.main;
+                    if (cam != null)
+                    {
+                        var pos = cam.transform.position;
+                        pos.y += Mathf.Sign(scroll) * gridMap.TileSize.y * 2f;
+                        cam.transform.position = pos;
+                        ClampCamera();
+                    }
+                }
+            }
+
             if (_currentState is EnemyTurnState || _currentState is AnimatingState)
                 return;
 
             var input = CaoCao.Input.InputManager.Instance;
             if (input == null) return;
-
-            if (input.ClickDown)
-            {
-                var cell = gridMap.WorldToCell(GetMouseWorldPos());
-                // Check if click is on action menu (skip grid click)
-                if (IsActionMenuShowing())
-                {
-                    if (actionMenu != null && actionMenu.ContainsScreenPoint(input.ScreenPosition))
-                        return;
-                    if (_fallbackMenuPanel != null &&
-                        RectTransformUtility.RectangleContainsScreenPoint(_fallbackMenuPanel, input.ScreenPosition, null))
-                        return;
-                }
-                _currentState?.HandleClick(cell);
-            }
 
             if (input.CancelDown)
                 _currentState?.HandleCancel();
@@ -268,22 +770,178 @@ namespace CaoCao.Battle
             _currentState?.HandleHover(hoverCell);
         }
 
+        void HandleCameraDrag()
+        {
+            var cam = Camera.main;
+            if (cam == null) return;
+
+            var mouse = UnityEngine.InputSystem.Mouse.current;
+            if (mouse == null) return;
+
+            var leftBtn = mouse.leftButton;
+            Vector3 mousePos = mouse.position.ReadValue();
+
+            // Mouse down — start tracking
+            if (leftBtn.wasPressedThisFrame)
+            {
+                _dragStartMouse = mousePos;
+                _dragStartCamPos = cam.transform.position;
+                _isDragging = false;
+                _pendingClick = true;
+            }
+
+            // Mouse held — check for drag or continue dragging
+            if (leftBtn.isPressed)
+            {
+                Vector3 delta = mousePos - _dragStartMouse;
+
+                // Start dragging once past threshold
+                if (!_isDragging && _pendingClick && delta.magnitude > DragThreshold)
+                {
+                    _isDragging = true;
+                    _pendingClick = false;
+                }
+
+                // Continue dragging
+                if (_isDragging)
+                {
+                    float worldPerPixel = cam.orthographicSize * 2f / Screen.height;
+                    Vector3 worldDelta = new Vector3(-delta.x * worldPerPixel, -delta.y * worldPerPixel, 0);
+                    cam.transform.position = _dragStartCamPos + worldDelta;
+                    ClampCamera();
+                }
+            }
+
+            // Mouse up — if short tap (no drag), process as click
+            if (leftBtn.wasReleasedThisFrame)
+            {
+                if (_pendingClick && !_isDragging)
+                {
+                    if (!(_currentState is EnemyTurnState || _currentState is AnimatingState))
+                        ProcessClick();
+                }
+                _pendingClick = false;
+                _isDragging = false;
+            }
+        }
+
+        void ProcessClick()
+        {
+            var cell = gridMap.WorldToCell(GetMouseWorldPos());
+            var input = CaoCao.Input.InputManager.Instance;
+
+            if (IsActionMenuShowing())
+            {
+                if (input != null)
+                {
+                    if (actionMenu != null && actionMenu.ContainsScreenPoint(input.ScreenPosition))
+                        return;
+                    if (_fallbackMenuPanel != null &&
+                        RectTransformUtility.RectangleContainsScreenPoint(_fallbackMenuPanel, input.ScreenPosition, null))
+                        return;
+                }
+            }
+            _currentState?.HandleClick(cell);
+        }
+
         // --- Camera Setup ---
+        // World-space bounds of the viewable map (origin-based)
+        float _mapMinX, _mapMinY, _mapWorldW, _mapWorldH;
+
         void SetupCamera()
         {
             var cam = Camera.main;
             if (cam == null) return;
 
-            // Battle grid: 12x8 tiles of 48x48 = 576x384 pixel world
-            // Center camera on grid, orthographic size = half height in world units
-            float mapWorldW = gridMap != null ? gridMap.MapSize.x * tileSize.x : 12 * 48;
-            float mapWorldH = gridMap != null ? gridMap.MapSize.y * tileSize.y : 8 * 48;
+            // Determine map world bounds (use background sprite size, or grid bounds)
+            Vector2 origin = gridMap != null ? gridMap.Origin : Vector2.zero;
+            _mapMinX = origin.x;
+            _mapMinY = origin.y;
+
+            if (_mapBackground != null)
+            {
+                float ppu = _mapBackground.pixelsPerUnit;
+                _mapWorldW = _mapBackground.rect.width / ppu;
+                _mapWorldH = _mapBackground.rect.height / ppu;
+            }
+            else
+            {
+                _mapWorldW = gridMap != null ? gridMap.MapSize.x * gridMap.TileSize.x : 12 * 48;
+                _mapWorldH = gridMap != null ? gridMap.MapSize.y * gridMap.TileSize.y : 8 * 48;
+            }
 
             cam.orthographic = true;
-            cam.orthographicSize = mapWorldH * 0.5f;
-            cam.transform.position = new Vector3(mapWorldW * 0.5f, mapWorldH * 0.5f, -10f);
 
-            Debug.Log($"[BattleController] Camera set: orthoSize={cam.orthographicSize}, pos={cam.transform.position}");
+            // Fit camera width to map width, let height scroll if map is taller
+            float screenAspect = (float)Screen.width / Screen.height;
+            float orthoSizeByWidth = (_mapWorldW / screenAspect) * 0.5f;
+            float orthoSizeByHeight = _mapWorldH * 0.5f;
+
+            // Use the smaller of the two so the map fills the screen (no empty sides)
+            cam.orthographicSize = Mathf.Min(orthoSizeByWidth, orthoSizeByHeight);
+
+            // Start camera centered on the bottom portion of the map (where units usually spawn)
+            float camHalfH = cam.orthographicSize;
+            float centerX = _mapMinX + _mapWorldW * 0.5f;
+            float startY = Mathf.Clamp(_mapMinY + camHalfH, _mapMinY + camHalfH, _mapMinY + _mapWorldH - camHalfH);
+            cam.transform.position = new Vector3(centerX, startY, -10f);
+
+            Debug.Log($"[BattleController] Camera: orthoSize={cam.orthographicSize}, mapBounds=({_mapMinX},{_mapMinY})+({_mapWorldW}x{_mapWorldH}), pos={cam.transform.position}");
+        }
+
+        /// <summary>
+        /// Clamp camera within map bounds. Call after any camera movement.
+        /// </summary>
+        void ClampCamera()
+        {
+            var cam = Camera.main;
+            if (cam == null) return;
+
+            float halfH = cam.orthographicSize;
+            float halfW = halfH * cam.aspect;
+
+            float minX = _mapMinX + halfW;
+            float maxX = _mapMinX + _mapWorldW - halfW;
+            float minY = _mapMinY + halfH;
+            float maxY = _mapMinY + _mapWorldH - halfH;
+
+            // If map is smaller than camera view, just center
+            if (minX > maxX) minX = maxX = _mapMinX + _mapWorldW * 0.5f;
+            if (minY > maxY) minY = maxY = _mapMinY + _mapWorldH * 0.5f;
+
+            var pos = cam.transform.position;
+            pos.x = Mathf.Clamp(pos.x, minX, maxX);
+            pos.y = Mathf.Clamp(pos.y, minY, maxY);
+            cam.transform.position = pos;
+        }
+
+        /// <summary>
+        /// Smoothly move camera to center on a world position (e.g., selected unit).
+        /// </summary>
+        public void FocusCameraOn(Vector2 worldPos)
+        {
+            var cam = Camera.main;
+            if (cam == null) return;
+            StartCoroutine(SmoothCameraMove(worldPos));
+        }
+
+        IEnumerator SmoothCameraMove(Vector2 target)
+        {
+            var cam = Camera.main;
+            float duration = 0.3f;
+            float t = 0;
+            Vector3 start = cam.transform.position;
+            Vector3 end = new Vector3(target.x, target.y, -10f);
+
+            while (t < duration)
+            {
+                t += Time.deltaTime;
+                cam.transform.position = Vector3.Lerp(start, end, t / duration);
+                ClampCamera();
+                yield return null;
+            }
+            cam.transform.position = end;
+            ClampCamera();
         }
 
         // --- Ensure InputManager ---
@@ -314,6 +972,8 @@ namespace CaoCao.Battle
             _movedThisTurn = false;
             ComputeReachable(unit);
             highlighter.SetMoveCells(new List<Vector2Int>(Reachable.Keys));
+            ShowUnitInfo(unit);
+            FocusCameraOn(gridMap.CellToWorld(unit.cell));
             SetState(new UnitSelectedState());
         }
 
@@ -325,6 +985,7 @@ namespace CaoCao.Battle
             _movedThisTurn = false;
             highlighter.ClearAll();
             HideActionMenu();
+            HideUnitInfo();
             SetState(new IdleState());
         }
 
@@ -436,12 +1097,18 @@ namespace CaoCao.Battle
         {
             SetState(new AnimatingState());
             attacker.Attack(target);
+            // Show target info during combat so player sees HP change
+            ShowUnitInfo(target);
             StartCoroutine(AfterAttack(attacker));
         }
 
         IEnumerator AfterAttack(BattleUnit attacker)
         {
-            yield return new WaitForSeconds(0.2f);
+            yield return new WaitForSeconds(0.5f);
+
+            // Refresh info panel after damage
+            if (SelectedUnit != null && SelectedUnit.hp > 0)
+                ShowUnitInfo(SelectedUnit);
 
             // Check win/lose after attack
             if (CheckBattleEnd()) yield break;
@@ -463,8 +1130,14 @@ namespace CaoCao.Battle
         IEnumerator RunEnemyTurn()
         {
             SetState(new EnemyTurnState());
+            SetEndTurnButtonVisible(false);
             _currentTeam = "enemy";
             EventBus.TurnChanged("enemy");
+
+            yield return StartCoroutine(ShowTurnBanner($"第{_turnCount}回合 - 敌方回合"));
+
+            // Heal enemy units on healing terrain
+            ApplyTerrainHealing(UnitTeam.Enemy);
 
             var enemies = GetUnitsByTeam(UnitTeam.Enemy);
             foreach (var e in enemies) e.ResetActed();
@@ -512,6 +1185,11 @@ namespace CaoCao.Battle
             foreach (var p in GetUnitsByTeam(UnitTeam.Player)) p.ResetActed();
             _currentTeam = "player";
             EventBus.TurnChanged("player");
+
+            yield return StartCoroutine(ShowTurnBanner($"第{_turnCount}回合 - 我方回合"));
+            // Heal player units on healing terrain at new turn start
+            ApplyTerrainHealing(UnitTeam.Player);
+            SetEndTurnButtonVisible(true);
             SetState(new IdleState());
         }
 
@@ -734,8 +1412,8 @@ namespace CaoCao.Battle
         void ComputeReachable(BattleUnit unit)
         {
             _pathfinder.MapSize = gridMap.MapSize;
-            _pathfinder.GetCost = c => gridMap.GetCost(c);
-            _pathfinder.IsPassable = c => gridMap.IsPassable(c);
+            _pathfinder.GetCost = c => gridMap.GetCost(c, unit.movementType);
+            _pathfinder.IsPassable = c => gridMap.IsPassable(c, unit.movementType);
             _pathfinder.IsBlocked = c => IsOccupied(c, unit);
             var result = _pathfinder.ComputeReachable(unit.cell, unit.mov);
             Reachable = result.Reachable;
@@ -891,7 +1569,10 @@ namespace CaoCao.Battle
                     unit.tileSize = tileSize;
                     unit.cell = enemy.startCell;
 
-                    // Initialize enemy stats from placement data
+                    // Initialize enemy identity and stats from placement data
+                    unit.displayName = displayName;
+                    unit.unitTypeName = "敌兵";
+                    unit.level = 1;
                     unit.maxHp = enemy.maxHp;
                     unit.hp = enemy.maxHp;
                     unit.atk = enemy.atk;
@@ -928,6 +1609,18 @@ namespace CaoCao.Battle
         {
             if (gridMap != null)
             {
+                // If no tilemap is present but we have a background, derive grid size from background
+                if (_mapBackground != null && gridMap.MapSize.x * gridMap.TileSize.x < _mapBackground.rect.width / _mapBackground.pixelsPerUnit * 0.9f)
+                {
+                    float ppu = _mapBackground.pixelsPerUnit;
+                    int gridW = Mathf.FloorToInt(_mapBackground.rect.width / ppu / gridMap.TileSize.x);
+                    int gridH = Mathf.FloorToInt(_mapBackground.rect.height / ppu / gridMap.TileSize.y);
+                    Debug.Log($"[BattleController] Resizing grid to match background: {gridW}x{gridH}");
+                    gridMap.Rebuild(new Vector2Int(gridW, gridH));
+                }
+
+                // Sync tileSize from gridMap (which reads from Grid component)
+                tileSize = gridMap.TileSize;
                 highlighter.Origin = gridMap.Origin;
                 highlighter.TileSize = tileSize;
             }
