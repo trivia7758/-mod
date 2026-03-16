@@ -1,4 +1,4 @@
-.vscode/
+# Unity generated
 [Ll]ibrary/
 [Tt]emp/
 [Oo]bj/
@@ -7,6 +7,8 @@
 [Ll]ogs/
 UserSettings/
 MemoryCaptures/
+
+# Unity file extensions
 *.pidb
 *.booproj
 *.svd
@@ -19,8 +21,6 @@ MemoryCaptures/
 *.unitypackage
 *.app
 *.exe
-.vs/
-.idea/
 *.csproj
 *.unityproj
 *.sln
@@ -28,11 +28,29 @@ MemoryCaptures/
 *.tmp
 *.user
 *.userprefs
+
+# IDE
+.vs/
+.vscode/
+.idea/
+
+# OS
 .DS_Store
+Thumbs.db
+
+# Misc
 *.log
 .cache/
 *.cache
 *.lock
-.claude/
-.godot/
 nul
+
+# Unity crash recovery
+_Recovery/
+
+# Claude Code
+.claude/
+
+# Python cache
+__pycache__/
+*.pyc
