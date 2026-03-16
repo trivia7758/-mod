@@ -14,7 +14,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::CaoCao.Data.HeroDefinition
   id: zhang_qiang
   displayName: "\u5F20\u5F3A"
-  portrait: {fileID: 0}
+  portrait: {fileID: 21300000, guid: 9a1476efc8d2d5a49a2908ceb0d54af9, type: 3}
   unitSprite: {fileID: 0}
   force: 50
   intelligence: 75

@@ -21,6 +21,8 @@ namespace CaoCao.UI
 
         public override void Initialize()
         {
+            AutoFindButtons();
+
             var canvas = GetComponentInParent<Canvas>();
             if (canvas != null)
             {
@@ -29,7 +31,14 @@ namespace CaoCao.UI
             }
 
             if (startButton != null)
-                startButton.onClick.AddListener(() => OnStartGame?.Invoke());
+                startButton.onClick.AddListener(() =>
+                {
+                    Debug.Log("[MenuScreen] Start button clicked");
+                    if (OnStartGame != null)
+                        OnStartGame.Invoke();
+                    else
+                        Debug.LogError("[MenuScreen] OnStartGame has no subscribers!");
+                });
             if (noticeButton != null)
                 noticeButton.onClick.AddListener(() => OnOpenAnnouncement?.Invoke());
             if (settingsButton != null)
@@ -38,6 +47,30 @@ namespace CaoCao.UI
                 loadButton.onClick.AddListener(() => { if (loadDialog != null) loadDialog.Show(); });
 
             UpdateLabels();
+        }
+
+        void AutoFindButtons()
+        {
+            if (startButton == null || loadButton == null || settingsButton == null || noticeButton == null)
+            {
+                var buttons = GetComponentsInChildren<Button>(true);
+                foreach (var btn in buttons)
+                {
+                    var tmp = btn.GetComponentInChildren<TMP_Text>();
+                    if (tmp == null) continue;
+                    string text = tmp.text.Trim();
+                    if (startButton == null && (text.Contains("开始") || text.Contains("Start") || text.Contains("start")))
+                        startButton = btn;
+                    else if (loadButton == null && (text.Contains("读取") || text.Contains("Load") || text.Contains("load")))
+                        loadButton = btn;
+                    else if (settingsButton == null && (text.Contains("设置") || text.Contains("Settings") || text.Contains("settings")))
+                        settingsButton = btn;
+                    else if (noticeButton == null && (text.Contains("公告") || text.Contains("Notice") || text.Contains("notice")))
+                        noticeButton = btn;
+                }
+                if (startButton != null)
+                    Debug.Log("[MenuScreen] Auto-found startButton");
+            }
         }
 
         void UpdateLabels()

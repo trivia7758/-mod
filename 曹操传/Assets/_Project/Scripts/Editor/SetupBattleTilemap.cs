@@ -13,36 +13,86 @@ namespace CaoCao.Editor
         static readonly string TileDir = "Assets/_Project/Resources/Data/TerrainTiles";
         static readonly string TileSpriteDir = "Assets/_Project/Resources/Sprites/TerrainTileSprites";
 
-        // ── Step 1: Create TerrainType assets ──
-        [MenuItem("CaoCao/Battle Tilemap/1. Create Terrain Types")]
+        // All 28 terrain definitions matching terrain_data.json
+        // Format: (id, displayName, defaultCost, hitBonus, avoidBonus, minimapColor, infantry, cavalry, archer, naval)
+        static readonly (string id, string name, int cost, int hit, int avoid, Color color,
+            int inf, int cav, int arc, int nav)[] AllTerrains =
+        {
+            // ── 自然地形 ──
+            ("plain",     "平原",   1,  0,  0, new Color(0.60f, 0.80f, 0.30f),  1,  1,  1, -1),
+            ("grassland", "草原",   1,  0,  0, new Color(0.50f, 0.75f, 0.25f),  1,  1,  1, -1),
+            ("forest",    "树林",   2,  0, 20, new Color(0.20f, 0.50f, 0.10f),  1,  2,  1, -1),
+            ("wasteland", "荒地",   2,  0, 10, new Color(0.65f, 0.55f, 0.35f),  1,  2,  1, -1),
+            ("mountain",  "山地",   3,  0, 30, new Color(0.50f, 0.40f, 0.30f),  2,  3,  2, -1),
+            ("rock",      "岩山",  -1,  0,  0, new Color(0.40f, 0.35f, 0.30f), -1, -1, -1, -1),
+            ("cliff",     "山崖",  -1,  0,  0, new Color(0.35f, 0.30f, 0.25f), -1, -1, -1, -1),
+            ("snow",      "雪原",   2,  0, 10, new Color(0.90f, 0.92f, 0.95f),  1,  2,  1, -1),
+
+            // ── 水域地形 ──
+            ("bridge",    "桥梁",   1,  0,  0, new Color(0.60f, 0.50f, 0.30f),  1,  1,  1,  1),
+            ("shallows",  "浅滩",   2,  0,  0, new Color(0.55f, 0.70f, 0.80f),  2,  2,  2,  1),
+            ("swamp",     "沼泽",   3,  0,  0, new Color(0.35f, 0.45f, 0.30f),  2,  3,  2,  1),
+            ("pond",      "池塘",  -1,  0,  0, new Color(0.30f, 0.55f, 0.80f), -1, -1, -1, -1),
+            ("stream",    "小河",  -1,  0,  0, new Color(0.35f, 0.60f, 0.85f), -1, -1, -1, -1),
+            ("river",     "大河",   2,  0,  0, new Color(0.20f, 0.40f, 0.90f),  1,  2,  1,  1),
+            ("pool",      "水池",  -1,  0,  0, new Color(0.25f, 0.50f, 0.75f), -1, -1, -1, -1),
+
+            // ── 建筑/人造地形 ──
+            ("fence",     "栅栏",  -1,  0,  0, new Color(0.55f, 0.45f, 0.25f), -1, -1, -1, -1),
+            ("wall",      "城墙",  -1, 10,  0, new Color(0.50f, 0.50f, 0.50f), -1, -1, -1, -1),
+            ("city",      "城内",   1, 10, 10, new Color(0.70f, 0.65f, 0.55f),  1,  1,  1, -1),
+            ("gate",      "城门",  -1,  0,  0, new Color(0.60f, 0.55f, 0.45f), -1, -1, -1, -1),
+            ("castle",    "城池",   1, 20, 20, new Color(0.75f, 0.70f, 0.50f),  1,  1,  1, -1),
+            ("pass",      "关隘",   1, 20, 20, new Color(0.65f, 0.55f, 0.40f),  1,  1,  1, -1),
+            ("deerfence", "鹿砦",   2, 25, 25, new Color(0.55f, 0.50f, 0.30f),  1,  2,  1, -1),
+
+            // ── 村落/设施 ──
+            ("village",   "村庄",   2, 10, 10, new Color(0.80f, 0.60f, 0.30f),  1,  2,  1, -1),
+            ("barracks",  "兵营",   2, 10, 10, new Color(0.70f, 0.45f, 0.25f),  1,  2,  1, -1),
+            ("house",     "民居",   3,  0, 10, new Color(0.75f, 0.55f, 0.35f),  2,  3,  2, -1),
+            ("treasury",  "宝物库", 2,  0,  0, new Color(0.85f, 0.75f, 0.30f),  1,  2,  1, -1),
+
+            // ── 特殊地形 ──
+            ("fire",      "火",    -1,  0,  0, new Color(0.95f, 0.30f, 0.10f), -1, -1, -1, -1),
+            ("ship",      "船",    -1,  0,  0, new Color(0.50f, 0.40f, 0.20f), -1, -1, -1, -1),
+        };
+
+        // ── Step 1: Create ALL 28 TerrainType assets ──
+        [MenuItem("CaoCao/Battle Tilemap/1. Create Terrain Types (All 28)")]
         static void CreateTerrainTypes()
         {
             EnsureDir(TerrainDir);
 
-            CreateTerrain("plain", "平原", 1, 0, 0, new Color(0.6f, 0.8f, 0.3f),
-                infantry: 1, cavalry: 1, archer: 1, naval: -1);
-            CreateTerrain("road", "道路", 1, 0, 0, new Color(0.7f, 0.6f, 0.4f),
-                infantry: 1, cavalry: 1, archer: 1, naval: -1);
-            CreateTerrain("forest", "森林", 2, 0, 20, new Color(0.2f, 0.5f, 0.1f),
-                infantry: 2, cavalry: 3, archer: 2, naval: -1);
-            CreateTerrain("mountain", "山地", -1, 0, 30, new Color(0.5f, 0.4f, 0.3f),
-                infantry: 3, cavalry: -1, archer: 3, naval: -1);
-            CreateTerrain("water", "水域", -1, 0, 0, new Color(0.2f, 0.4f, 0.9f),
-                infantry: -1, cavalry: -1, archer: -1, naval: 1);
-            CreateTerrain("bridge", "桥梁", 1, 0, 0, new Color(0.6f, 0.5f, 0.3f),
-                infantry: 1, cavalry: 1, archer: 1, naval: 1);
-            CreateTerrain("village", "村庄", 1, 0, 10, new Color(0.8f, 0.6f, 0.3f),
-                infantry: 1, cavalry: 1, archer: 1, naval: -1);
-            CreateTerrain("castle", "城墙", 2, 10, 30, new Color(0.5f, 0.5f, 0.5f),
-                infantry: 2, cavalry: -1, archer: 2, naval: -1);
+            int count = 0;
+            foreach (var t in AllTerrains)
+            {
+                CreateTerrain(t.id, t.name, t.cost, t.hit, t.avoid, t.color,
+                    t.inf, t.cav, t.arc, t.nav);
+                count++;
+            }
+
+            // Remove legacy "road" asset if it exists (not in terrain_data.json)
+            string roadPath = $"{TerrainDir}/road.asset";
+            if (AssetDatabase.LoadAssetAtPath<TerrainType>(roadPath) != null)
+            {
+                AssetDatabase.DeleteAsset(roadPath);
+                Debug.Log("[SetupBattleTilemap] Removed legacy 'road.asset' (not in terrain_data.json)");
+            }
+            // Remove legacy "water" asset if it exists
+            string waterPath = $"{TerrainDir}/water.asset";
+            if (AssetDatabase.LoadAssetAtPath<TerrainType>(waterPath) != null)
+            {
+                AssetDatabase.DeleteAsset(waterPath);
+                Debug.Log("[SetupBattleTilemap] Removed legacy 'water.asset' (not in terrain_data.json)");
+            }
 
             AssetDatabase.SaveAssets();
             AssetDatabase.Refresh();
-            Debug.Log("[SetupBattleTilemap] Created 8 TerrainType assets in " + TerrainDir);
+            Debug.Log($"[SetupBattleTilemap] Created {count} TerrainType assets in {TerrainDir}");
         }
 
-        // ── Step 2: Create TerrainTile assets with colored sprites ──
-        [MenuItem("CaoCao/Battle Tilemap/2. Create Terrain Tiles")]
+        // ── Step 2: Create TerrainTile assets + colored sprites for ALL terrains ──
+        [MenuItem("CaoCao/Battle Tilemap/2. Create Terrain Tiles (All 28)")]
         static void CreateTerrainTiles()
         {
             // Ask user for tile size
@@ -70,11 +120,10 @@ namespace CaoCao.Editor
             EnsureDir(TileDir);
             EnsureDir(TileSpriteDir);
 
-            string[] terrainNames = { "plain", "road", "forest", "mountain", "water", "bridge", "village", "castle" };
-
-            foreach (var tname in terrainNames)
+            int count = 0;
+            foreach (var t in AllTerrains)
             {
-                string terrainPath = $"{TerrainDir}/{tname}.asset";
+                string terrainPath = $"{TerrainDir}/{t.id}.asset";
                 var terrainType = AssetDatabase.LoadAssetAtPath<TerrainType>(terrainPath);
                 if (terrainType == null)
                 {
@@ -83,9 +132,9 @@ namespace CaoCao.Editor
                 }
 
                 // Create a solid color PNG sprite (size = tileSize)
-                var sprite = CreateOrLoadColorSprite(tname, terrainType.minimapColor, ts);
+                var sprite = CreateOrLoadColorSprite(t.id, terrainType.minimapColor, ts);
 
-                string tilePath = $"{TileDir}/{tname}_tile.asset";
+                string tilePath = $"{TileDir}/{t.id}_tile.asset";
                 var tile = AssetDatabase.LoadAssetAtPath<TerrainTile>(tilePath);
                 if (tile == null)
                 {
@@ -97,11 +146,24 @@ namespace CaoCao.Editor
                 tile.tileColor = new Color(1, 1, 1, 0.45f); // semi-transparent overlay
                 tile.tileSprite = sprite;
                 EditorUtility.SetDirty(tile);
+                count++;
+            }
+
+            // Clean up legacy tiles
+            string[] legacyTiles = { "road_tile", "water_tile" };
+            foreach (var lt in legacyTiles)
+            {
+                string ltPath = $"{TileDir}/{lt}.asset";
+                if (AssetDatabase.LoadAssetAtPath<TerrainTile>(ltPath) != null)
+                {
+                    AssetDatabase.DeleteAsset(ltPath);
+                    Debug.Log($"[SetupBattleTilemap] Removed legacy tile: {lt}");
+                }
             }
 
             AssetDatabase.SaveAssets();
             AssetDatabase.Refresh();
-            Debug.Log($"[SetupBattleTilemap] Created TerrainTile assets ({ts}x{ts} px) in {TileDir}");
+            Debug.Log($"[SetupBattleTilemap] Created {count} TerrainTile assets ({ts}x{ts} px) in {TileDir}");
         }
 
         // ── Step 3: Setup scene with background image + Grid + Tilemap ──
@@ -302,15 +364,50 @@ namespace CaoCao.Editor
             if (changed) importer.SaveAndReimport();
         }
 
-        static Sprite CreateOrLoadColorSprite(string terrainName, Color color, int size)
+        /// <summary>
+        /// Create a colored PNG sprite with the Chinese terrain name rendered on it.
+        /// Uses a larger texture (128x128) so text is legible in the Tile Palette,
+        /// but the PPU is set so it still maps to one tile.
+        /// </summary>
+        static Sprite CreateOrLoadColorSprite(string terrainName, Color color, int tileSize)
         {
             string pngPath = $"{TileSpriteDir}/{terrainName}_color.png";
 
-            var tex = new Texture2D(size, size, TextureFormat.RGBA32, false);
-            var pixels = new Color[size * size];
+            // Use 128x128 for better text clarity, scale down via PPU
+            int texSize = 128;
+            var tex = new Texture2D(texSize, texSize, TextureFormat.RGBA32, false);
+
+            // Fill background
+            var pixels = new Color[texSize * texSize];
             for (int i = 0; i < pixels.Length; i++)
                 pixels[i] = color;
             tex.SetPixels(pixels);
+
+            // Draw a subtle 2px border (darker)
+            Color borderColor = color * 0.5f;
+            borderColor.a = 1f;
+            for (int i = 0; i < texSize; i++)
+            {
+                tex.SetPixel(i, 0, borderColor);
+                tex.SetPixel(i, 1, borderColor);
+                tex.SetPixel(i, texSize - 1, borderColor);
+                tex.SetPixel(i, texSize - 2, borderColor);
+                tex.SetPixel(0, i, borderColor);
+                tex.SetPixel(1, i, borderColor);
+                tex.SetPixel(texSize - 1, i, borderColor);
+                tex.SetPixel(texSize - 2, i, borderColor);
+            }
+
+            // Find the Chinese display name
+            string label = terrainName;
+            foreach (var t in AllTerrains)
+            {
+                if (t.id == terrainName) { label = t.name; break; }
+            }
+
+            // Render text using a simple bitmap font approach
+            DrawTextOnTexture(tex, label, texSize);
+
             tex.Apply();
 
             var pngBytes = tex.EncodeToPNG();
@@ -325,13 +422,134 @@ namespace CaoCao.Editor
             {
                 importer.textureType = TextureImporterType.Sprite;
                 importer.spriteImportMode = SpriteImportMode.Single;
-                importer.spritePixelsPerUnit = 1;
-                importer.filterMode = FilterMode.Point;
+                // PPU = texSize / tileSize so it maps to exactly one tile
+                importer.spritePixelsPerUnit = (float)texSize / tileSize;
+                importer.filterMode = FilterMode.Bilinear;
                 importer.textureCompression = TextureImporterCompression.Uncompressed;
                 importer.SaveAndReimport();
             }
 
             return AssetDatabase.LoadAssetAtPath<Sprite>(pngPath);
+        }
+
+        /// <summary>
+        /// Draw a distinctive pattern on the terrain tile texture to help identify it.
+        /// Uses diagonal stripes, dots, or cross-hatch patterns depending on terrain category.
+        /// Also draws a short label using a hardcoded 5x7 pixel font (ASCII only).
+        /// </summary>
+        static void DrawTextOnTexture(Texture2D tex, string text, int texSize)
+        {
+            // Find the terrain entry to get the id for the label
+            string id = text; // text IS the Chinese name, find the id
+            foreach (var t in AllTerrains)
+            {
+                if (t.name == text) { id = t.id; break; }
+            }
+
+            // Truncate id to fit (max ~8 chars for 128px)
+            string label = id.Length > 8 ? id.Substring(0, 8) : id;
+
+            // Draw the label with the built-in tiny pixel font
+            DrawPixelText(tex, label, texSize);
+        }
+
+        // ── Tiny 5x7 pixel font for ASCII (A-Z, a-z, 0-9, common symbols) ──
+        // Each character is encoded as 5 columns of 7 bits packed into a uint.
+        static readonly System.Collections.Generic.Dictionary<char, uint[]> PixelFont = BuildPixelFont();
+
+        static System.Collections.Generic.Dictionary<char, uint[]> BuildPixelFont()
+        {
+            var f = new System.Collections.Generic.Dictionary<char, uint[]>();
+            // Format: each entry is uint[5] (5 columns), each uint has 7 bits (rows, bit0=top)
+            f['a'] = new uint[] { 0x20,0x54,0x54,0x54,0x78 };
+            f['b'] = new uint[] { 0x7f,0x48,0x44,0x44,0x38 };
+            f['c'] = new uint[] { 0x38,0x44,0x44,0x44,0x20 };
+            f['d'] = new uint[] { 0x38,0x44,0x44,0x48,0x7f };
+            f['e'] = new uint[] { 0x38,0x54,0x54,0x54,0x18 };
+            f['f'] = new uint[] { 0x08,0x7e,0x09,0x01,0x02 };
+            f['g'] = new uint[] { 0x0c,0x52,0x52,0x52,0x3e };
+            f['h'] = new uint[] { 0x7f,0x08,0x04,0x04,0x78 };
+            f['i'] = new uint[] { 0x00,0x44,0x7d,0x40,0x00 };
+            f['j'] = new uint[] { 0x20,0x40,0x44,0x3d,0x00 };
+            f['k'] = new uint[] { 0x7f,0x10,0x28,0x44,0x00 };
+            f['l'] = new uint[] { 0x00,0x41,0x7f,0x40,0x00 };
+            f['m'] = new uint[] { 0x7c,0x04,0x18,0x04,0x78 };
+            f['n'] = new uint[] { 0x7c,0x08,0x04,0x04,0x78 };
+            f['o'] = new uint[] { 0x38,0x44,0x44,0x44,0x38 };
+            f['p'] = new uint[] { 0x7c,0x14,0x14,0x14,0x08 };
+            f['q'] = new uint[] { 0x08,0x14,0x14,0x18,0x7c };
+            f['r'] = new uint[] { 0x7c,0x08,0x04,0x04,0x08 };
+            f['s'] = new uint[] { 0x48,0x54,0x54,0x54,0x20 };
+            f['t'] = new uint[] { 0x04,0x3f,0x44,0x40,0x20 };
+            f['u'] = new uint[] { 0x3c,0x40,0x40,0x20,0x7c };
+            f['v'] = new uint[] { 0x1c,0x20,0x40,0x20,0x1c };
+            f['w'] = new uint[] { 0x3c,0x40,0x30,0x40,0x3c };
+            f['x'] = new uint[] { 0x44,0x28,0x10,0x28,0x44 };
+            f['y'] = new uint[] { 0x0c,0x50,0x50,0x50,0x3c };
+            f['z'] = new uint[] { 0x44,0x64,0x54,0x4c,0x44 };
+            return f;
+        }
+
+        static void DrawPixelText(Texture2D tex, string text, int texSize)
+        {
+            int scale = 2; // each font pixel = 2x2 texture pixels
+            int charW = 5 * scale + scale; // 5 cols + 1 spacing, scaled
+            int charH = 7 * scale;
+            int totalW = text.Length * charW;
+            int startX = (texSize - totalW) / 2;
+            int startY = (texSize - charH) / 2;
+
+            // Determine text color: use white with dark shadow, or dark with light shadow
+            // depending on background brightness
+            Color bgSample = tex.GetPixel(texSize / 2, texSize / 2);
+            float brightness = bgSample.r * 0.299f + bgSample.g * 0.587f + bgSample.b * 0.114f;
+            Color textColor = brightness > 0.5f ? Color.black : Color.white;
+            Color shadowColor = brightness > 0.5f ? new Color(1, 1, 1, 0.4f) : new Color(0, 0, 0, 0.6f);
+
+            for (int ci = 0; ci < text.Length; ci++)
+            {
+                char ch = text[ci];
+                if (!PixelFont.ContainsKey(ch)) continue;
+                var glyph = PixelFont[ch];
+
+                int cx = startX + ci * charW;
+
+                for (int col = 0; col < 5; col++)
+                {
+                    uint colBits = glyph[col];
+                    for (int row = 0; row < 7; row++)
+                    {
+                        if ((colBits & (1u << row)) != 0)
+                        {
+                            // Draw scaled pixel (shadow + main)
+                            for (int sy = 0; sy < scale; sy++)
+                            {
+                                for (int sx = 0; sx < scale; sx++)
+                                {
+                                    // Shadow (offset +1, +1)
+                                    int shX = cx + col * scale + sx + 1;
+                                    int shY = texSize - 1 - (startY + row * scale + sy + 1);
+                                    if (shX >= 0 && shX < texSize && shY >= 0 && shY < texSize)
+                                    {
+                                        Color bg = tex.GetPixel(shX, shY);
+                                        float a = shadowColor.a;
+                                        tex.SetPixel(shX, shY, new Color(
+                                            bg.r * (1 - a) + shadowColor.r * a,
+                                            bg.g * (1 - a) + shadowColor.g * a,
+                                            bg.b * (1 - a) + shadowColor.b * a, 1f));
+                                    }
+
+                                    // Main text
+                                    int px = cx + col * scale + sx;
+                                    int py = texSize - 1 - (startY + row * scale + sy);
+                                    if (px >= 0 && px < texSize && py >= 0 && py < texSize)
+                                        tex.SetPixel(px, py, textColor);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
 
         static void CreateTerrain(string id, string displayName, int defaultCost,

@@ -13,15 +13,15 @@ MonoBehaviour:
   m_Name: forest
   m_EditorClassIdentifier: Assembly-CSharp::CaoCao.Battle.TerrainType
   terrainId: forest
-  terrainName: "\u68EE\u6797"
+  terrainName: "\u6811\u6797"
   defaultMovementCost: 2
   movementCosts:
   - movementType: 0
-    cost: 2
+    cost: 1
   - movementType: 1
-    cost: 3
-  - movementType: 2
     cost: 2
+  - movementType: 2
+    cost: 1
   - movementType: 3
     cost: -1
   hitBonus: 0

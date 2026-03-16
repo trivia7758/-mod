@@ -20,7 +20,10 @@ namespace CaoCao.Core
 
         void EnsureFadeOverlay()
         {
-            if (_fadeCanvas != null) return;
+            // Check for destroyed-but-not-null Unity object
+            if (_fadeCanvas != null && _fadeCanvas.gameObject != null) return;
+            _fadeCanvas = null;
+            _fadeOverlay = null;
 
             var go = new GameObject("FadeOverlay");
             go.transform.SetParent(transform);
@@ -68,14 +71,19 @@ namespace CaoCao.Core
 
         IEnumerator FadeRoutine(float from, float to, float duration)
         {
+            EnsureFadeOverlay();
+            if (_fadeOverlay == null) yield break;
+
             _fadeOverlay.blocksRaycasts = true;
             float elapsed = 0f;
             while (elapsed < duration)
             {
+                if (_fadeOverlay == null) yield break;
                 elapsed += Time.unscaledDeltaTime;
                 _fadeOverlay.alpha = Mathf.Lerp(from, to, elapsed / duration);
                 yield return null;
             }
+            if (_fadeOverlay == null) yield break;
             _fadeOverlay.alpha = to;
             _fadeOverlay.blocksRaycasts = to > 0.5f;
         }

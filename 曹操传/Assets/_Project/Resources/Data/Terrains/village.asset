@@ -14,17 +14,17 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::CaoCao.Battle.TerrainType
   terrainId: village
   terrainName: "\u6751\u5E84"
-  defaultMovementCost: 1
+  defaultMovementCost: 2
   movementCosts:
   - movementType: 0
     cost: 1
   - movementType: 1
-    cost: 1
+    cost: 2
   - movementType: 2
     cost: 1
   - movementType: 3
     cost: -1
-  hitBonus: 0
+  hitBonus: 10
   avoidBonus: 10
   healPerTurn: 0
   minimapColor: {r: 0.8, g: 0.6, b: 0.3, a: 1}

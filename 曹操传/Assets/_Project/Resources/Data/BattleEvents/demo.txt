@@ -1,0 +1,189 @@
+# ============================================================
+# Demo Battle - 全功能测试
+# ============================================================
+# 地图: 12x8
+# 我方: 曹操(2,2)  夏侯惇(4,3)
+# 敌方: 黄巾头目(8,5)  黄巾兵(9,2)
+# ============================================================
+
+# ── 角色声明 ──
+actor 曹操 left
+actor 夏侯惇 left
+actor 黄巾头目 right
+actor 黄巾兵 right
+actor 伏兵队长 right
+actor narrator center
+
+# ============================================================
+# 1. battle_start: 开场对话
+# ============================================================
+event opening
+  trigger battle_start
+  camera_focus 曹操
+  talk 曹操 "众将听令！前方有黄巾余党作乱，随我出击！"
+  talk 夏侯惇 "得令！曹公放心，末将定将贼首拿下！"
+  camera_focus 黄巾头目
+  talk 黄巾头目 "哼，来的好！弟兄们，给我上！"
+  hide_dialogue
+end_event
+
+# ============================================================
+# 2. turn_start: 第2回合伏兵出现 + spawn + move
+# ============================================================
+event turn2_ambush
+  trigger turn_start 2
+  talk narrator "第二回合——敌军伏兵出现了！"
+  camera_focus 10 6
+  spawn 伏兵队长 enemy 10 6 hp=25 atk=8 def=3 mov=5
+  wait 0.3
+  spawn 伏兵甲 enemy 11 6 hp=15 atk=6 def=2 mov=4
+  wait 0.3
+  spawn 伏兵乙 enemy 11 5 hp=15 atk=6 def=2 mov=4
+  wait 0.3
+  talk 伏兵队长 "哈哈哈！你们中了埋伏了！"
+  # 伏兵队长向前移动
+  move 伏兵队长 9 6
+  wait 0.2
+  talk 曹操 "不好！有伏兵！众将小心！"
+  # buff: 给我方全体+2防御应对伏兵
+  buff_team player def 2
+  talk narrator "我方士气高涨！全体防御+2！"
+  hide_dialogue
+  set_flag ambush_triggered
+end_event
+
+# ============================================================
+# 3. proximity: 夏侯惇 走到 黄巾兵 旁边触发单挑
+# ============================================================
+event xiahou_vs_soldier
+  trigger proximity 夏侯惇 黄巾兵
+  camera_focus 夏侯惇
+  talk 夏侯惇 "区区黄巾贼，看我一刀斩了你！"
+  talk 黄巾兵 "大……大人饶命！"
+  # 单挑演出
+  duel_begin 夏侯惇 黄巾兵
+    face 夏侯惇 right
+    face 黄巾兵 left
+    wait 0.3
+    attack 夏侯惇 黄巾兵
+    wait 0.4
+    attack 夏侯惇 黄巾兵
+  duel_end
+  # 单挑结果: 黄巾兵被斩杀
+  kill 黄巾兵
+  talk 夏侯惇 "哼，不堪一击。"
+  hide_dialogue
+end_event
+
+# ============================================================
+# 4. proximity: 曹操 走到 黄巾头目 旁边触发对话
+# ============================================================
+event caocao_vs_boss
+  trigger proximity 曹操 黄巾头目
+  camera_focus 曹操
+  talk 曹操 "黄巾贼首，你的末日到了！"
+  talk 黄巾头目 "曹操！你休得猖狂！"
+  # 单挑演出（3回合交锋）
+  duel_begin 曹操 黄巾头目
+    face 曹操 right
+    face 黄巾头目 left
+    wait 0.2
+    attack 曹操 黄巾头目
+    wait 0.3
+    attack 黄巾头目 曹操
+    wait 0.3
+    attack 曹操 黄巾头目
+    wait 0.3
+    attack 曹操 黄巾头目
+  duel_end
+  # 曹操胜出，黄巾头目受重伤
+  damage 黄巾头目 10
+  talk 黄巾头目 "可……可恶……"
+  talk 曹操 "束手就擒吧！"
+  hide_dialogue
+end_event
+
+# ============================================================
+# 5. hp_below: 黄巾头目血量低于50%
+# ============================================================
+event boss_half_hp
+  trigger hp_below 黄巾头目 50
+  condition unit_alive 黄巾头目
+  camera_focus 黄巾头目
+  talk 黄巾头目 "不……不可能！我怎么会输给你们！"
+  talk 黄巾头目 "来人！给我拦住他们！"
+  # 召唤最后的援军
+  spawn 死士 enemy 7 7 hp=20 atk=9 def=1 mov=6
+  talk narrator "黄巾头目召唤了死士！"
+  # 给黄巾头目加攻击buff（狂暴）
+  buff 黄巾头目 atk 5
+  talk narrator "黄巾头目陷入狂暴！攻击力+5！"
+  hide_dialogue
+  set_flag boss_enraged
+end_event
+
+# ============================================================
+# 6. hp_below: 黄巾头目血量低于20%（投降）
+# ============================================================
+event boss_surrender
+  trigger hp_below 黄巾头目 20
+  condition unit_alive 黄巾头目
+  condition flag boss_enraged
+  camera_focus 黄巾头目
+  talk 黄巾头目 "我……我投降！饶了我吧！"
+  talk 曹操 "哼，早知如此何必当初。"
+  talk 曹操 "来人，将他押下去！"
+  # 黄巾头目转变阵营（投降）
+  change_team 黄巾头目 player
+  # 回复一些血
+  heal 黄巾头目 10
+  talk narrator "黄巾头目投降了！加入我方！"
+  hide_dialogue
+  set_flag boss_surrendered
+end_event
+
+# ============================================================
+# 7. area_enter: 玩家进入地图右侧区域
+# ============================================================
+event right_side_discovery
+  trigger area_enter player 9 0 11 7
+  condition not_flag ambush_triggered
+  talk narrator "前方地形复杂，小心前进！"
+  camera_focus 10 4
+  wait 0.5
+  hide_dialogue
+end_event
+
+# ============================================================
+# 8. unit_died: 伏兵队长被杀
+# ============================================================
+event ambush_leader_killed
+  trigger unit_died 伏兵队长
+  condition flag ambush_triggered
+  camera_focus 曹操
+  talk 曹操 "伏兵头目已除！继续进攻！"
+  # 给我方全体回血庆祝
+  heal 曹操 5
+  heal 夏侯惇 5
+  talk narrator "我方士气大振！曹操和夏侯惇各回复5HP！"
+  hide_dialogue
+end_event
+
+# ============================================================
+# 9. turn_start 5: 第5回合增援到达
+# ============================================================
+event turn5_reinforcement
+  trigger turn_start 5
+  condition unit_alive 曹操
+  talk narrator "我方援军到达！"
+  camera_focus 0 0
+  spawn 援军骑兵 player 0 0 hp=30 atk=10 def=5 mov=7
+  wait 0.3
+  # 援军骑兵走到战场中央
+  move 援军骑兵 5 4
+  camera_focus 援军骑兵
+  talk narrator "援军骑兵已就位！"
+  # 给援军buff
+  buff 援军骑兵 atk 3
+  hide_dialogue
+end_event

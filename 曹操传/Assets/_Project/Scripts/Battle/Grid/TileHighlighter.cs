@@ -9,6 +9,7 @@ namespace CaoCao.Battle
         [SerializeField] Vector2Int tileSize = new(48, 48);
         [SerializeField] Color moveColor = new(0.2f, 0.5f, 0.95f, 0.35f);
         [SerializeField] Color attackColor = new(0.95f, 0.15f, 0.15f, 0.35f);
+        [SerializeField] Color healColor = new(0.2f, 0.9f, 0.3f, 0.35f);
         [SerializeField] Color hoverColor = new(1f, 0.9f, 0.2f, 1f);
 
         public Vector2 Origin { get; set; }
@@ -50,6 +51,14 @@ namespace CaoCao.Battle
                 if (effects != null && effects.TryGetValue(cell, out int pct))
                     _effectLabels.Add(CreateEffectLabel(cell, pct));
             }
+        }
+
+        /// <summary>Show heal range (green).</summary>
+        public void SetHealCells(List<Vector2Int> cells)
+        {
+            ClearQuads(_attackQuads); // reuse attack quads layer
+            foreach (var cell in cells)
+                _attackQuads.Add(CreateQuad(cell, healColor, "HealHL"));
         }
 
         /// <summary>Show hover outline (yellow border).</summary>

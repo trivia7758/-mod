@@ -51,14 +51,13 @@ namespace CaoCao.Battle
         {
             var path = new List<Vector2Int>();
             Vector2Int? current = target;
-            while (current.HasValue && parent.ContainsKey(current.Value))
+            // Walk parent chain back to start; stop when parent is null (= start cell)
+            while (current.HasValue && parent.ContainsKey(current.Value) && parent[current.Value].HasValue)
             {
                 path.Add(current.Value);
                 current = parent[current.Value];
             }
             path.Reverse();
-            if (path.Count > 0 && path[0] == path[^1])
-                path.RemoveAt(0);
             return path;
         }
 

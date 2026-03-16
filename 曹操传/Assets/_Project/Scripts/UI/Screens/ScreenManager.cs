@@ -48,6 +48,8 @@ namespace CaoCao.UI
 
         void Start()
         {
+            AutoFindScreens();
+
             if (logoScreen != null) logoScreen.Initialize();
             if (updateScreen != null) updateScreen.Initialize();
             if (announcementScreen != null) announcementScreen.Initialize();
@@ -62,6 +64,11 @@ namespace CaoCao.UI
             {
                 menuScreen.OnStartGame += OnStartGame;
                 menuScreen.OnOpenAnnouncement += OnOpenAnnouncement;
+                Debug.Log("[ScreenManager] MenuScreen wired OK");
+            }
+            else
+            {
+                Debug.LogError("[ScreenManager] MenuScreen is NULL — Start button won't work!");
             }
             if (loadDialog != null)
             {
@@ -70,6 +77,22 @@ namespace CaoCao.UI
 
             // Go directly to main menu (skip logo/update)
             ShowScreen(menuScreen);
+        }
+
+        void AutoFindScreens()
+        {
+            if (menuScreen == null)
+                menuScreen = GetComponentInChildren<MenuScreen>(true);
+            if (logoScreen == null)
+                logoScreen = GetComponentInChildren<LogoScreen>(true);
+            if (updateScreen == null)
+                updateScreen = GetComponentInChildren<UpdateScreen>(true);
+            if (announcementScreen == null)
+                announcementScreen = GetComponentInChildren<AnnouncementScreen>(true);
+            if (settingsDialog == null)
+                settingsDialog = GetComponentInChildren<SettingsDialog>(true);
+            if (loadDialog == null)
+                loadDialog = GetComponentInChildren<LoadDialog>(true);
         }
 
         void ShowScreen(BaseScreen screen)
@@ -113,17 +136,39 @@ namespace CaoCao.UI
 
         void OnStartGame()
         {
+            Debug.Log("[ScreenManager] OnStartGame called");
+
             // Reset the loaded flag so story plays normally for new game
             var gsm = Core.ServiceLocator.Get<Core.GameStateManager>();
             if (gsm != null)
             {
                 gsm.WasLoadedFromSave = false;
-                gsm.InitializeNewGame();
+                try
+                {
+                    gsm.InitializeNewGame();
+                    Debug.Log("[ScreenManager] InitializeNewGame succeeded");
+                }
+                catch (System.Exception e)
+                {
+                    Debug.LogError($"[ScreenManager] InitializeNewGame failed: {e}");
+                }
+            }
+            else
+            {
+                Debug.LogWarning("[ScreenManager] GameStateManager not found — starting without save state");
             }
 
             var loader = Core.ServiceLocator.Get<Core.SceneLoader>();
             if (loader != null)
+            {
+                Debug.Log("[ScreenManager] Loading StoryScene...");
                 loader.LoadScene("StoryScene");
+            }
+            else
+            {
+                Debug.LogError("[ScreenManager] SceneLoader not found! Falling back to direct load");
+                UnityEngine.SceneManagement.SceneManager.LoadScene("StoryScene");
+            }
         }
 
         void OnLoadSlotSelected(int slot)

@@ -5,9 +5,11 @@ using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
 using CaoCao.Battle.States;
+using CaoCao.Battle.Events;
 using CaoCao.Common;
 using CaoCao.Core;
 using CaoCao.Data;
+using UnityEngine.EventSystems;
 
 namespace CaoCao.Battle
 {
@@ -23,11 +25,13 @@ namespace CaoCao.Battle
         [SerializeField] BattleHUD hud;
 
         BattleUnitInfoPanel _unitInfoPanel;
+        BattleHeroInfoPanel _heroInfoPanel;
 
         public BattleGridMap GridMap => gridMap;
         public TileHighlighter Highlighter => highlighter;
         public BattleUnit SelectedUnit { get; private set; }
         public Dictionary<Vector2Int, int> Reachable { get; private set; } = new();
+        public int TurnCount => _turnCount;
 
         IBattleState _currentState;
         BattlePathfinder _pathfinder = new();
@@ -54,6 +58,19 @@ namespace CaoCao.Battle
 
         // System Menu
         BattleSystemMenu _systemMenu;
+
+        // Camera follow
+        Coroutine _cameraFollowCo;
+        Transform _cameraFollowTarget;
+
+        // Battle event system
+        BattleEventManager _eventManager;
+        string _battleDefName;
+
+        // Skill/Item selection panel
+        GameObject _selectionPanelGo;
+        Canvas _selectionCanvas;
+        RectTransform _selectionContent;
 
         void Start()
         {
@@ -88,6 +105,9 @@ namespace CaoCao.Battle
             // Create system menu (save/load/settings)
             BuildSystemMenu();
 
+            // Initialize battle event system
+            InitEventManager();
+
             EventBus.BattleStarted();
             Debug.Log($"[BattleController] Battle started! Players={GetUnitsByTeam(UnitTeam.Player).Count}, Enemies={GetUnitsByTeam(UnitTeam.Enemy).Count}");
 
@@ -100,10 +120,32 @@ namespace CaoCao.Battle
             SetState(new AnimatingState());
             SetEndTurnButtonVisible(false);
             yield return StartCoroutine(ShowTurnBanner($"第{_turnCount}回合 - 我方回合"));
+
+            // Battle start events (opening dialogue, etc.)
+            if (_eventManager != null)
+                yield return _eventManager.CheckBattleStart();
+
             // Heal player units on healing terrain at turn start
             ApplyTerrainHealing(UnitTeam.Player);
+
+            // Turn start events
+            if (_eventManager != null)
+                yield return _eventManager.CheckTurnStart(_turnCount);
+
             SetEndTurnButtonVisible(true);
             SetState(new IdleState());
+        }
+
+        void InitEventManager()
+        {
+            _eventManager = GetComponent<BattleEventManager>();
+            if (_eventManager == null)
+                _eventManager = gameObject.AddComponent<BattleEventManager>();
+
+            // Determine battle name for loading event file
+            // Use the battle definition name if available, otherwise "demo"
+            string battleName = _battleDefName ?? "demo";
+            _eventManager.Init(this, battleName);
         }
 
         /// <summary>
@@ -653,6 +695,9 @@ namespace CaoCao.Battle
 
         // --- Fallback Action Menu (built programmatically) ---
         GameObject _fallbackMenuGo;
+        Button _fallbackAtkBtn;
+        Button _fallbackSkillBtn;
+        Button _fallbackItemBtn;
         Canvas _fallbackMenuCanvas;
         RectTransform _fallbackMenuPanel;
 
@@ -674,7 +719,7 @@ namespace CaoCao.Battle
             var panelGo = new GameObject("ActionMenuPanel");
             panelGo.transform.SetParent(canvasGo.transform, false);
             _fallbackMenuPanel = panelGo.AddComponent<RectTransform>();
-            _fallbackMenuPanel.sizeDelta = new Vector2(160, 100);
+            _fallbackMenuPanel.sizeDelta = new Vector2(160, 192);
             var panelImg = panelGo.AddComponent<Image>();
             panelImg.color = new Color(0.1f, 0.1f, 0.1f, 0.9f);
             var panelOutline = panelGo.AddComponent<Outline>();
@@ -690,6 +735,15 @@ namespace CaoCao.Battle
             // Attack button
             var atkBtn = CreateActionButton(panelGo.transform, "攻击", new Color(0.7f, 0.2f, 0.2f));
             atkBtn.onClick.AddListener(OnAttackPressed);
+            _fallbackAtkBtn = atkBtn;
+            // Skill button
+            var skillBtn = CreateActionButton(panelGo.transform, "技能", new Color(0.2f, 0.45f, 0.7f));
+            skillBtn.onClick.AddListener(OnSkillPressed);
+            _fallbackSkillBtn = skillBtn;
+            // Item button
+            var itemBtn = CreateActionButton(panelGo.transform, "道具", new Color(0.2f, 0.6f, 0.3f));
+            itemBtn.onClick.AddListener(OnItemPressed);
+            _fallbackItemBtn = itemBtn;
             // Wait button
             var waitBtn = CreateActionButton(panelGo.transform, "待机", new Color(0.3f, 0.3f, 0.5f));
             waitBtn.onClick.AddListener(OnWaitPressed);
@@ -733,12 +787,18 @@ namespace CaoCao.Battle
         Vector3 _dragStartCamPos;
         const float DragThreshold = 8f; // pixels before drag starts
 
+        // Long-press state (for hero info panel)
+        float _pressStartTime;
+        bool _longPressTriggered;
+        const float LongPressDuration = 0.5f; // seconds
+
         void Update()
         {
             if (_battleEnded) return;
 
-            // Block all battle input when system menu is open
+            // Block all battle input when system menu or hero info panel is open
             if (_systemMenu != null && _systemMenu.IsOpen) return;
+            if (_heroInfoPanel != null && _heroInfoPanel.IsOpen) return;
 
             // Camera drag/scroll — always active
             HandleCameraDrag();
@@ -792,9 +852,11 @@ namespace CaoCao.Battle
                 _dragStartCamPos = cam.transform.position;
                 _isDragging = false;
                 _pendingClick = true;
+                _pressStartTime = Time.unscaledTime;
+                _longPressTriggered = false;
             }
 
-            // Mouse held — check for drag or continue dragging
+            // Mouse held — check for drag, long press, or continue dragging
             if (leftBtn.isPressed)
             {
                 Vector3 delta = mousePos - _dragStartMouse;
@@ -804,6 +866,15 @@ namespace CaoCao.Battle
                 {
                     _isDragging = true;
                     _pendingClick = false;
+                }
+
+                // Long press detection (only if not dragging and not already triggered)
+                if (!_isDragging && !_longPressTriggered && _pendingClick
+                    && Time.unscaledTime - _pressStartTime >= LongPressDuration)
+                {
+                    _longPressTriggered = true;
+                    _pendingClick = false; // consume the click
+                    OnLongPress();
                 }
 
                 // Continue dragging
@@ -831,21 +902,44 @@ namespace CaoCao.Battle
 
         void ProcessClick()
         {
-            var cell = gridMap.WorldToCell(GetMouseWorldPos());
-            var input = CaoCao.Input.InputManager.Instance;
+            // Block click-through when clicking on any UI element (buttons, menus, etc.)
+            if (EventSystem.current != null && EventSystem.current.IsPointerOverGameObject())
+                return;
 
-            if (IsActionMenuShowing())
-            {
-                if (input != null)
-                {
-                    if (actionMenu != null && actionMenu.ContainsScreenPoint(input.ScreenPosition))
-                        return;
-                    if (_fallbackMenuPanel != null &&
-                        RectTransformUtility.RectangleContainsScreenPoint(_fallbackMenuPanel, input.ScreenPosition, null))
-                        return;
-                }
-            }
+            var cell = gridMap.WorldToCell(GetMouseWorldPos());
             _currentState?.HandleClick(cell);
+        }
+
+        void OnLongPress()
+        {
+            // Block when clicking on UI
+            if (EventSystem.current != null && EventSystem.current.IsPointerOverGameObject())
+                return;
+
+            var cell = gridMap.WorldToCell(GetMouseWorldPos());
+            var unit = GetUnitAt(cell);
+            if (unit == null) return;
+
+            ShowHeroInfoPanel(unit);
+        }
+
+        void ShowHeroInfoPanel(BattleUnit unit)
+        {
+            if (_heroInfoPanel == null)
+            {
+                var go = new GameObject("BattleHeroInfoPanel");
+                go.transform.SetParent(transform);
+                _heroInfoPanel = go.AddComponent<BattleHeroInfoPanel>();
+                _heroInfoPanel.OnClosed += OnHeroInfoPanelClosed;
+            }
+
+            _heroInfoPanel.Show(unit);
+            Debug.Log($"[BattleController] Showing hero info for: {unit.displayName}");
+        }
+
+        void OnHeroInfoPanelClosed()
+        {
+            // Nothing special needed — battle state continues as before
         }
 
         // --- Camera Setup ---
@@ -948,6 +1042,73 @@ namespace CaoCao.Battle
             ClampCamera();
         }
 
+        // --- Camera Follow ---
+
+        /// <summary>
+        /// Start smoothly following a unit's transform each frame (e.g., during movement).
+        /// Call StopCameraFollow() when the action is done.
+        /// </summary>
+        public void StartCameraFollow(Transform target)
+        {
+            StopCameraFollow();
+            if (target == null) return;
+            _cameraFollowTarget = target;
+            _cameraFollowCo = StartCoroutine(CameraFollowCoroutine());
+        }
+
+        public void StopCameraFollow()
+        {
+            if (_cameraFollowCo != null)
+            {
+                StopCoroutine(_cameraFollowCo);
+                _cameraFollowCo = null;
+            }
+            _cameraFollowTarget = null;
+        }
+
+        IEnumerator CameraFollowCoroutine()
+        {
+            var cam = Camera.main;
+            if (cam == null) yield break;
+
+            float smoothSpeed = 8f;
+            while (_cameraFollowTarget != null)
+            {
+                Vector3 targetPos = new Vector3(
+                    _cameraFollowTarget.position.x,
+                    _cameraFollowTarget.position.y,
+                    cam.transform.position.z);
+                cam.transform.position = Vector3.Lerp(cam.transform.position, targetPos, smoothSpeed * Time.deltaTime);
+                ClampCamera();
+                yield return null;
+            }
+        }
+
+        /// <summary>
+        /// Focus camera on a unit, following during movement, then snap when done.
+        /// Used for enemy AI actions.
+        /// </summary>
+        IEnumerator FocusCameraOnUnit(BattleUnit unit)
+        {
+            if (unit == null) yield break;
+            var cam = Camera.main;
+            if (cam == null) yield break;
+
+            Vector3 target = new Vector3(unit.transform.position.x, unit.transform.position.y, -10f);
+            float duration = 0.25f;
+            float t = 0;
+            Vector3 start = cam.transform.position;
+            while (t < duration)
+            {
+                t += Time.deltaTime;
+                cam.transform.position = Vector3.Lerp(start, target, t / duration);
+                ClampCamera();
+                yield return null;
+            }
+            cam.transform.position = target;
+            ClampCamera();
+        }
+
         // --- Ensure InputManager ---
         void EnsureInputManager()
         {
@@ -993,7 +1154,10 @@ namespace CaoCao.Battle
                 moveEffects[cell] = gridMap.GetEffect(cell, unit.unitClass);
 
             highlighter.SetMoveCells(new List<Vector2Int>(reachable.Keys), moveEffects);
-            // No attack range shown during selection — only shown after clicking "攻击"
+
+            // Show red attack range around unit's CURRENT position (no effect labels)
+            var atkCells = GetAttackCells(unit.cell, unit.atkRange);
+            highlighter.SetAttackCells(atkCells);
         }
 
         /// <summary>Preview enemy unit's movement + attack range (read-only, no selection).</summary>
@@ -1009,12 +1173,9 @@ namespace CaoCao.Battle
             // Show blue movement range with effects
             ShowRangeHighlights(enemy, result.Reachable);
 
-            // Show red attack range around enemy's CURRENT position
+            // Show red attack range around enemy's CURRENT position (no effect labels)
             var atkCells = GetAttackCells(enemy.cell, enemy.atkRange);
-            var atkEffects = new Dictionary<Vector2Int, int>();
-            foreach (var c in atkCells)
-                atkEffects[c] = gridMap.GetEffect(c, enemy.unitClass);
-            highlighter.SetAttackCells(atkCells, atkEffects);
+            highlighter.SetAttackCells(atkCells);
         }
 
         /// <summary>Clear enemy range preview.</summary>
@@ -1029,8 +1190,11 @@ namespace CaoCao.Battle
             Reachable.Clear();
             _parent.Clear();
             _movedThisTurn = false;
+            _pendingSkill = null;
+            _pendingItem = null;
             highlighter.ClearAll();
             HideActionMenu();
+            CloseSelectionPanel();
             HideUnitInfo();
             SetState(new IdleState());
         }
@@ -1041,8 +1205,14 @@ namespace CaoCao.Battle
             SetState(new AnimatingState());
             _movedThisTurn = true;
 
+            // Clear range highlights while unit is walking
+            highlighter.ClearAll();
+
             // Build path from parent chain (endpoint → startpoint, then reverse)
             var path = BuildPath(_selectedOrigin, cell);
+
+            // Camera follows the moving unit
+            StartCameraFollow(SelectedUnit.transform);
 
             SelectedUnit.OnMoved += OnUnitMoved;
             SelectedUnit.MoveAlongPath(path);
@@ -1067,8 +1237,18 @@ namespace CaoCao.Battle
         void OnUnitMoved(BattleUnit unit)
         {
             unit.OnMoved -= OnUnitMoved;
+            StopCameraFollow();
             highlighter.ClearAll();
-            if (unit.team == UnitTeam.Player && _currentTeam == "player")
+            StartCoroutine(OnUnitMovedWithEvents(unit));
+        }
+
+        IEnumerator OnUnitMovedWithEvents(BattleUnit unit)
+        {
+            // Check battle events triggered by movement (proximity, area_enter)
+            if (_eventManager != null)
+                yield return _eventManager.CheckAfterMove(unit);
+
+            if (unit.team == UnitTeam.Player && _currentTeam == "player" && !_battleEnded)
                 ShowActionMenu(unit);
         }
 
@@ -1084,6 +1264,9 @@ namespace CaoCao.Battle
         // --- Action Menu ---
         public void ShowActionMenu(BattleUnit unit)
         {
+            // Check if any enemy is within attack range
+            bool hasTarget = HasEnemyInRange(unit);
+
             if (actionMenu != null)
             {
                 Vector2 worldPos = gridMap.CellToWorld(unit.cell);
@@ -1099,9 +1282,69 @@ namespace CaoCao.Battle
                     Vector2 screenPos = cam.WorldToScreenPoint(worldPos);
                     _fallbackMenuPanel.position = screenPos;
                 }
+
+                // Gray out attack button if no enemies in range
+                if (_fallbackAtkBtn != null)
+                {
+                    _fallbackAtkBtn.interactable = hasTarget;
+                    var colors = _fallbackAtkBtn.colors;
+                    colors.disabledColor = new Color(0.3f, 0.3f, 0.3f, 0.6f);
+                    _fallbackAtkBtn.colors = colors;
+                }
+
+                // Skill: gray out if unit has no usable skills or insufficient MP
+                if (_fallbackSkillBtn != null)
+                {
+                    bool hasSkills = false;
+                    foreach (var sk in unit.skills)
+                    {
+                        if (sk != null && sk.usableInBattle && unit.mp >= sk.mpCost)
+                        { hasSkills = true; break; }
+                    }
+                    _fallbackSkillBtn.interactable = hasSkills;
+                    var sc = _fallbackSkillBtn.colors;
+                    sc.disabledColor = new Color(0.3f, 0.3f, 0.3f, 0.6f);
+                    _fallbackSkillBtn.colors = sc;
+                }
+
+                // Item: gray out if shared inventory has no usable consumable items
+                if (_fallbackItemBtn != null)
+                {
+                    bool hasItems = false;
+                    var sharedItems = GetSharedInventory();
+                    foreach (var stack in sharedItems)
+                    {
+                        if (stack != null && stack.count > 0)
+                        {
+                            var itemDef = FindItemDef(stack.itemId);
+                            if (itemDef != null && itemDef.usableInBattle &&
+                                itemDef.itemType == Common.ItemType.Consumable)
+                            { hasItems = true; break; }
+                        }
+                    }
+                    _fallbackItemBtn.interactable = hasItems;
+                    var ic = _fallbackItemBtn.colors;
+                    ic.disabledColor = new Color(0.3f, 0.3f, 0.3f, 0.6f);
+                    _fallbackItemBtn.colors = ic;
+                }
+
                 _fallbackMenuGo.SetActive(true);
             }
             SetState(new ActionMenuState());
+        }
+
+        /// <summary>Check if any enemy unit is within attack range of the given unit.</summary>
+        bool HasEnemyInRange(BattleUnit unit)
+        {
+            var enemies = GetUnitsByTeam(unit.team == UnitTeam.Player ? UnitTeam.Enemy : UnitTeam.Player);
+            foreach (var e in enemies)
+            {
+                if (e.hp <= 0) continue;
+                int dist = Mathf.Abs(unit.cell.x - e.cell.x) + Mathf.Abs(unit.cell.y - e.cell.y);
+                if (dist >= 1 && dist <= unit.atkRange)
+                    return true;
+            }
+            return false;
         }
 
         public void HideActionMenu()
@@ -1121,13 +1364,735 @@ namespace CaoCao.Battle
         {
             if (SelectedUnit == null) return;
             HideActionMenu();
-            // Show red attack range cells around unit's current position
+            // Show red attack range cells around unit's current position (no effect labels)
             var atkCells = GetAttackCells(SelectedUnit.cell, SelectedUnit.atkRange);
-            var atkEffects = new Dictionary<Vector2Int, int>();
-            foreach (var c in atkCells)
-                atkEffects[c] = gridMap.GetEffect(c, SelectedUnit.unitClass);
-            highlighter.SetAttackCells(atkCells, atkEffects);
+            highlighter.SetAttackCells(atkCells);
             SetState(new AttackingState());
+        }
+
+        void OnSkillPressed()
+        {
+            if (SelectedUnit == null) return;
+            HideActionMenu();
+            ShowSkillPanel(SelectedUnit);
+        }
+
+        void OnItemPressed()
+        {
+            if (SelectedUnit == null) return;
+            HideActionMenu();
+            ShowItemPanel(SelectedUnit);
+        }
+
+        // ── Skill Selection Panel ──
+
+        void ShowSkillPanel(BattleUnit unit)
+        {
+            CloseSelectionPanel();
+
+            if (unit.skills.Count == 0)
+            {
+                ShowActionMenu(unit);
+                return;
+            }
+
+            // Build card data
+            var cards = new List<CardData>();
+            foreach (var sk in unit.skills)
+            {
+                if (sk == null || !sk.usableInBattle) continue;
+                bool canUse = unit.mp >= sk.mpCost;
+                string effectText = sk.effectType switch
+                {
+                    Common.SkillEffectType.Damage => "攻击策略",
+                    Common.SkillEffectType.Heal   => "恢复策略",
+                    Common.SkillEffectType.Buff    => "辅助策略",
+                    Common.SkillEffectType.Debuff  => "妨碍策略",
+                    _ => "策略"
+                };
+                Color effectColor = sk.effectType switch
+                {
+                    Common.SkillEffectType.Damage => new Color(1f, 0.4f, 0.3f),
+                    Common.SkillEffectType.Heal   => new Color(0.3f, 1f, 0.5f),
+                    Common.SkillEffectType.Buff    => new Color(0.4f, 0.7f, 1f),
+                    Common.SkillEffectType.Debuff  => new Color(0.9f, 0.6f, 1f),
+                    _ => Color.white
+                };
+                string costText = $"MP-{sk.mpCost}";
+                var captured = sk;
+                cards.Add(new CardData
+                {
+                    name = sk.displayName,
+                    effectText = effectText,
+                    effectColor = effectColor,
+                    bottomText = costText,
+                    icon = null, // TODO: sk.icon
+                    enabled = canUse,
+                    onClick = () => OnSkillSelected(unit, captured)
+                });
+            }
+
+            BuildCardPanel(unit.displayName, unit.mp, unit.maxMp, cards,
+                () => { CloseSelectionPanel(); ShowActionMenu(unit); });
+        }
+
+        void OnSkillSelected(BattleUnit unit, Data.SkillDefinition skill)
+        {
+            CloseSelectionPanel();
+
+            if (skill.effectType == Common.SkillEffectType.Heal)
+            {
+                // Heal: show diamond range and enter heal targeting state
+                var healCells = GetHealRangeCells(unit.cell, 4);
+                highlighter.SetHealCells(healCells);
+                _pendingSkill = skill;
+                SetState(new HealTargetingState());
+            }
+            else if (skill.effectType == Common.SkillEffectType.Damage)
+            {
+                // Damage skill: show attack range and enter targeting state
+                var atkCells = GetAttackCells(unit.cell, skill.range);
+                highlighter.SetAttackCells(atkCells);
+                _pendingSkill = skill;
+                SetState(new SkillTargetingState());
+            }
+            else
+            {
+                // Buff/debuff: apply to self for now
+                unit.UseSkill(skill, unit);
+                unit.Wait();
+                EndPlayerAction();
+            }
+        }
+
+        Data.SkillDefinition _pendingSkill;
+
+        /// <summary>Execute pending skill on a target (called from SkillTargetingState).</summary>
+        public void ExecuteSkillOn(BattleUnit target)
+        {
+            if (SelectedUnit == null || _pendingSkill == null) return;
+            SetState(new AnimatingState());
+            // Focus camera on skill target
+            FocusCameraOn(gridMap.CellToWorld(target.cell));
+            SelectedUnit.UseSkill(_pendingSkill, target);
+            ShowUnitInfo(target);
+            _pendingSkill = null;
+            StartCoroutine(AfterSkill(SelectedUnit, target));
+        }
+
+        IEnumerator AfterSkill(BattleUnit caster, BattleUnit target)
+        {
+            yield return new WaitForSeconds(0.5f);
+            if (CheckBattleEnd()) yield break;
+
+            // Check battle events after skill use
+            if (_eventManager != null)
+                yield return _eventManager.CheckAfterCombat(caster, target);
+
+            if (CheckBattleEnd()) yield break;
+
+            caster.Wait();
+            EndPlayerAction();
+        }
+
+        public Data.SkillDefinition PendingSkill => _pendingSkill;
+
+        /// <summary>
+        /// Execute a heal skill on a friendly target (called from HealTargetingState).
+        /// </summary>
+        public void ExecuteHealSkillOn(BattleUnit target)
+        {
+            if (SelectedUnit == null || _pendingSkill == null) return;
+            SetState(new AnimatingState());
+            FocusCameraOn(gridMap.CellToWorld(target.cell));
+            SelectedUnit.UseSkill(_pendingSkill, target);
+            ShowUnitInfo(target);
+            _pendingSkill = null;
+            highlighter.ClearAll();
+            StartCoroutine(AfterHealSkill(SelectedUnit));
+        }
+
+        IEnumerator AfterHealSkill(BattleUnit caster)
+        {
+            yield return new WaitForSeconds(0.5f);
+            caster.Wait();
+            EndPlayerAction();
+        }
+
+        /// <summary>
+        /// Get heal range cells: diamond shape (Manhattan distance ≤ radius).
+        /// radius=4 gives the traditional 曹操传 heal range:
+        ///     dy=0: 9 wide (4 left + self + 4 right)
+        ///     dy=±1: 7 wide
+        ///     dy=±2: 5 wide
+        ///     dy=±3: 3 wide
+        ///     dy=±4: 1 wide
+        /// </summary>
+        List<Vector2Int> GetHealRangeCells(Vector2Int center, int radius)
+        {
+            var cells = new List<Vector2Int>();
+            for (int dx = -radius; dx <= radius; dx++)
+            {
+                for (int dy = -radius; dy <= radius; dy++)
+                {
+                    int dist = Mathf.Abs(dx) + Mathf.Abs(dy);
+                    if (dist <= radius)
+                    {
+                        var c = center + new Vector2Int(dx, dy);
+                        if (gridMap.IsInBounds(c))
+                            cells.Add(c);
+                    }
+                }
+            }
+            return cells;
+        }
+
+        // ── Item Selection Panel ──
+
+        void ShowItemPanel(BattleUnit unit)
+        {
+            CloseSelectionPanel();
+
+            var cards = new List<CardData>();
+            // Read from shared party inventory (all heroes share items)
+            var sharedItems = GetSharedInventory();
+            foreach (var stack in sharedItems)
+            {
+                if (stack == null || stack.count <= 0) continue;
+                var itemDef = FindItemDef(stack.itemId);
+                if (itemDef == null || !itemDef.usableInBattle) continue;
+                if (itemDef.itemType != Common.ItemType.Consumable) continue;
+
+                // Items are always selectable — target validation happens in ItemTargetingState
+                bool canUse = true;
+
+                // Effect text & color
+                string effectText = "";
+                Color effectColor = new Color(0.3f, 1f, 0.5f);
+                if (itemDef.healAmount > 0)
+                {
+                    effectText = "恢复生命";
+                    effectColor = new Color(0.3f, 1f, 0.5f);
+                }
+                else if (itemDef.mpBonus > 0)
+                {
+                    effectText = "恢复法力";
+                    effectColor = new Color(0.4f, 0.7f, 1f);
+                }
+
+                var capturedDef = itemDef;
+                cards.Add(new CardData
+                {
+                    name = itemDef.displayName,
+                    effectText = effectText,
+                    effectColor = effectColor,
+                    bottomText = stack.count.ToString(),
+                    icon = itemDef.icon,
+                    enabled = canUse,
+                    onClick = () => OnItemSelected(unit, capturedDef)
+                });
+            }
+
+            if (cards.Count == 0)
+            {
+                ShowActionMenu(unit);
+                return;
+            }
+
+            BuildCardPanel(unit.displayName, unit.mp, unit.maxMp, cards,
+                () => { CloseSelectionPanel(); ShowActionMenu(unit); });
+        }
+
+        void OnItemSelected(BattleUnit unit, Data.ItemDefinition itemDef)
+        {
+            CloseSelectionPanel();
+
+            // Show 3x3 item usage range (九宫格) around unit
+            var itemCells = GetItemRangeCells(unit.cell);
+            highlighter.SetAttackCells(itemCells); // red highlight for item range
+            _pendingItem = itemDef;
+            SetState(new ItemTargetingState());
+        }
+
+        Data.ItemDefinition _pendingItem;
+
+        /// <summary>
+        /// Get the shared party inventory (all heroes share the same item pool).
+        /// Falls back to a demo inventory if GameStateManager is not available.
+        /// </summary>
+        List<Data.ItemStack> GetSharedInventory()
+        {
+            var gsm = ServiceLocator.Has<GameStateManager>()
+                ? ServiceLocator.Get<GameStateManager>() : null;
+            if (gsm != null)
+                return gsm.State.inventory;
+
+            // Fallback: use _demoSharedInventory for demo mode
+            return _demoSharedInventory;
+        }
+
+        /// <summary>Demo fallback shared inventory (when no GameStateManager).</summary>
+        List<Data.ItemStack> _demoSharedInventory = new();
+
+        /// <summary>
+        /// Consume 1 item from shared inventory.
+        /// Uses GameStateManager.RemoveItem if available, otherwise manual removal.
+        /// </summary>
+        bool ConsumeSharedItem(string itemId)
+        {
+            var gsm = ServiceLocator.Has<GameStateManager>()
+                ? ServiceLocator.Get<GameStateManager>() : null;
+            if (gsm != null)
+                return gsm.RemoveItem(itemId, 1);
+
+            // Fallback: manual removal from demo inventory
+            var stack = _demoSharedInventory.Find(s => s.itemId == itemId && s.count > 0);
+            if (stack == null) return false;
+            stack.count--;
+            if (stack.count <= 0) _demoSharedInventory.Remove(stack);
+            return true;
+        }
+
+        /// <summary>Get 3x3 grid cells around center (九宫格, including self).</summary>
+        List<Vector2Int> GetItemRangeCells(Vector2Int center)
+        {
+            var cells = new List<Vector2Int>();
+            for (int dx = -1; dx <= 1; dx++)
+            {
+                for (int dy = -1; dy <= 1; dy++)
+                {
+                    var c = new Vector2Int(center.x + dx, center.y + dy);
+                    if (gridMap.IsInBounds(c))
+                        cells.Add(c);
+                }
+            }
+            return cells;
+        }
+
+        /// <summary>Execute pending item on a target cell (called from ItemTargetingState).</summary>
+        public void ExecuteItemOn(Vector2Int targetCell)
+        {
+            if (SelectedUnit == null || _pendingItem == null) return;
+
+            // Check if there's a friendly unit at that cell (or self)
+            var target = GetUnitAt(targetCell);
+            if (target == null || target.team != SelectedUnit.team)
+                return; // no valid target on that cell
+
+            // Validate: HP potion on full HP target is wasted, don't allow
+            if (_pendingItem.healAmount > 0 && _pendingItem.mpBonus <= 0 && target.hp >= target.maxHp)
+            {
+                Debug.Log($"[Battle] {target.displayName} HP已满，无法使用 {_pendingItem.displayName}");
+                return; // stay in targeting state, let player pick another target
+            }
+            if (_pendingItem.mpBonus > 0 && _pendingItem.healAmount <= 0 && target.mp >= target.maxMp)
+            {
+                Debug.Log($"[Battle] {target.displayName} MP已满，无法使用 {_pendingItem.displayName}");
+                return;
+            }
+
+            // Consume 1 from shared party inventory
+            if (!ConsumeSharedItem(_pendingItem.id)) { _pendingItem = null; return; }
+
+            // Focus camera on item target
+            FocusCameraOn(gridMap.CellToWorld(targetCell));
+
+            // Apply effect to target
+            if (_pendingItem.healAmount > 0)
+            {
+                int oldHp = target.hp;
+                target.hp = Mathf.Min(target.maxHp, target.hp + _pendingItem.healAmount);
+                Debug.Log($"[Battle] {SelectedUnit.displayName} 对 {target.displayName} 使用 {_pendingItem.displayName}: HP {oldHp} → {target.hp}");
+            }
+            if (_pendingItem.mpBonus > 0)
+            {
+                int oldMp = target.mp;
+                target.mp = Mathf.Min(target.maxMp, target.mp + _pendingItem.mpBonus);
+                Debug.Log($"[Battle] {SelectedUnit.displayName} 对 {target.displayName} 使用 {_pendingItem.displayName}: MP {oldMp} → {target.mp}");
+            }
+
+            // Update target's HP bar immediately after item use
+            target.UpdateHpBar();
+
+            ShowUnitInfo(target);
+            highlighter.ClearAll();
+            _pendingItem = null;
+            SelectedUnit.Wait();
+            EndPlayerAction();
+        }
+
+        public Data.ItemDefinition PendingItem => _pendingItem;
+
+        /// <summary>Find ItemDefinition by id from registry, Resources, or demo fallback.</summary>
+        readonly Dictionary<string, Data.ItemDefinition> _itemDefCache = new();
+
+        Data.ItemDefinition FindItemDef(string itemId)
+        {
+            if (string.IsNullOrEmpty(itemId)) return null;
+            if (_itemDefCache.TryGetValue(itemId, out var cached)) return cached;
+
+            // Try GameDataRegistry first
+            var registry = CaoCao.Core.ServiceLocator.Get<Data.GameDataRegistry>();
+            if (registry != null)
+            {
+                var def = registry.GetItem(itemId);
+                if (def != null) { _itemDefCache[itemId] = def; return def; }
+            }
+            // Fallback: try Resources
+            var allItems = Resources.LoadAll<Data.ItemDefinition>("Data/Items");
+            foreach (var it in allItems)
+            {
+                if (it.id == itemId) { _itemDefCache[itemId] = it; return it; }
+            }
+
+            // Demo fallback: create runtime items for testing
+            var demo = CreateDemoItem(itemId);
+            if (demo != null) _itemDefCache[itemId] = demo;
+            return demo;
+        }
+
+        static Data.ItemDefinition CreateDemoItem(string itemId)
+        {
+            var item = ScriptableObject.CreateInstance<Data.ItemDefinition>();
+            item.id = itemId;
+            item.itemType = Common.ItemType.Consumable;
+            item.usableInBattle = true;
+            item.usableInCamp = true;
+
+            switch (itemId)
+            {
+                case "hp_potion":
+                    item.displayName = "回复药";
+                    item.description = "恢复少量HP";
+                    item.healAmount = 50;
+                    break;
+                case "hp_potion_large":
+                    item.displayName = "大回复药";
+                    item.description = "恢复大量HP";
+                    item.healAmount = 120;
+                    break;
+                case "mp_potion":
+                    item.displayName = "策略恢复药";
+                    item.description = "恢复少量MP";
+                    item.mpBonus = 30;
+                    break;
+                default:
+                    return null;
+            }
+            return item;
+        }
+
+        // ── Card Data & Card Panel Builder (曹操传 style) ──
+
+        struct CardData
+        {
+            public string name;
+            public string effectText;   // e.g. "恢复生命", "攻击策略"
+            public Color effectColor;
+            public string bottomText;   // quantity for items, "MP-X" for skills
+            public Sprite icon;
+            public bool enabled;
+            public System.Action onClick;
+        }
+
+        /// <summary>
+        /// Build a card-grid panel like the original 曹操传.
+        /// Top: hero name + MP bar.  Body: grid of cards (icon + name + effect + count/cost).
+        /// </summary>
+        void BuildCardPanel(string heroName, int mp, int maxMp,
+            List<CardData> cards, System.Action onCancel)
+        {
+            // ── Canvas ──
+            var canvasGo = new GameObject("SelectionPanelCanvas");
+            _selectionCanvas = canvasGo.AddComponent<Canvas>();
+            _selectionCanvas.renderMode = RenderMode.ScreenSpaceOverlay;
+            _selectionCanvas.sortingOrder = 55;
+            var scaler = canvasGo.AddComponent<CanvasScaler>();
+            scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+            scaler.referenceResolution = new Vector2(1280, 720);
+            scaler.matchWidthOrHeight = 0.5f;
+            canvasGo.AddComponent<GraphicRaycaster>();
+
+            // ── Semi-transparent full-screen backdrop ──
+            var backdropGo = new GameObject("Backdrop", typeof(RectTransform));
+            backdropGo.transform.SetParent(canvasGo.transform, false);
+            var bdRt = backdropGo.GetComponent<RectTransform>();
+            bdRt.anchorMin = Vector2.zero;
+            bdRt.anchorMax = Vector2.one;
+            bdRt.offsetMin = Vector2.zero;
+            bdRt.offsetMax = Vector2.zero;
+            var bdImg = backdropGo.AddComponent<Image>();
+            bdImg.color = new Color(0, 0, 0, 0.5f);
+            var bdBtn = backdropGo.AddComponent<Button>();
+            bdBtn.targetGraphic = bdImg;
+            bdBtn.onClick.AddListener(() => onCancel?.Invoke());
+
+            // ── Main panel (centered, large) ──
+            int cols = Mathf.Min(cards.Count, 6);
+            if (cols < 3) cols = 3;
+            int rows = Mathf.CeilToInt((float)cards.Count / cols);
+            float cardW = 145f;
+            float cardH = 155f;
+            float gap = 8f;
+            float panelW = cols * cardW + (cols - 1) * gap + 32;
+            float panelH = 60 + rows * cardH + (rows - 1) * gap + 60; // header + cards + footer
+            panelW = Mathf.Min(panelW, 960);
+            panelH = Mathf.Min(panelH, 560);
+
+            _selectionPanelGo = new GameObject("CardPanel", typeof(RectTransform));
+            _selectionPanelGo.transform.SetParent(canvasGo.transform, false);
+            var panelRt = _selectionPanelGo.GetComponent<RectTransform>();
+            panelRt.anchorMin = new Vector2(0.5f, 0.5f);
+            panelRt.anchorMax = new Vector2(0.5f, 0.5f);
+            panelRt.pivot = new Vector2(0.5f, 0.5f);
+            panelRt.sizeDelta = new Vector2(panelW, panelH);
+            var panelImg = _selectionPanelGo.AddComponent<Image>();
+            panelImg.color = new Color(0.1f, 0.1f, 0.12f, 0.95f);
+            // Gold border
+            var outline = _selectionPanelGo.AddComponent<Outline>();
+            outline.effectColor = new Color(0.65f, 0.55f, 0.25f);
+            outline.effectDistance = new Vector2(2, -2);
+
+            // ── Header: hero name + MP bar ──
+            var headerGo = new GameObject("Header", typeof(RectTransform));
+            headerGo.transform.SetParent(_selectionPanelGo.transform, false);
+            var headerRt = headerGo.GetComponent<RectTransform>();
+            headerRt.anchorMin = new Vector2(0, 1);
+            headerRt.anchorMax = new Vector2(1, 1);
+            headerRt.pivot = new Vector2(0.5f, 1);
+            headerRt.anchoredPosition = Vector2.zero;
+            headerRt.sizeDelta = new Vector2(0, 50);
+
+            // Hero name
+            var nameGo = CreateTmpChild(headerGo, "HeroName", heroName, 24,
+                new Color(1f, 0.95f, 0.8f), TextAlignmentOptions.MidlineLeft, FontStyles.Bold);
+            var nameRt = nameGo.GetComponent<RectTransform>();
+            nameRt.anchorMin = new Vector2(0, 0);
+            nameRt.anchorMax = new Vector2(0.4f, 1);
+            nameRt.offsetMin = new Vector2(16, 8);
+            nameRt.offsetMax = new Vector2(0, -4);
+
+            // "MP" label
+            var mpLabelGo = CreateTmpChild(headerGo, "MPLabel", "MP", 20,
+                Color.white, TextAlignmentOptions.MidlineRight, FontStyles.Normal);
+            var mpLabelRt = mpLabelGo.GetComponent<RectTransform>();
+            mpLabelRt.anchorMin = new Vector2(0.4f, 0);
+            mpLabelRt.anchorMax = new Vector2(0.48f, 1);
+            mpLabelRt.offsetMin = new Vector2(0, 8);
+            mpLabelRt.offsetMax = new Vector2(0, -4);
+
+            // MP bar background
+            var mpBarBgGo = new GameObject("MpBarBg", typeof(RectTransform));
+            mpBarBgGo.transform.SetParent(headerGo.transform, false);
+            var mpBarBgRt = mpBarBgGo.GetComponent<RectTransform>();
+            mpBarBgRt.anchorMin = new Vector2(0.49f, 0.35f);
+            mpBarBgRt.anchorMax = new Vector2(0.82f, 0.65f);
+            mpBarBgRt.offsetMin = Vector2.zero;
+            mpBarBgRt.offsetMax = Vector2.zero;
+            var mpBarBgImg = mpBarBgGo.AddComponent<Image>();
+            mpBarBgImg.color = new Color(0.15f, 0.15f, 0.2f);
+
+            // MP bar fill
+            var mpBarFillGo = new GameObject("MpBarFill", typeof(RectTransform));
+            mpBarFillGo.transform.SetParent(mpBarBgGo.transform, false);
+            var mpBarFillRt = mpBarFillGo.GetComponent<RectTransform>();
+            float mpRatio = maxMp > 0 ? (float)mp / maxMp : 0;
+            mpBarFillRt.anchorMin = Vector2.zero;
+            mpBarFillRt.anchorMax = new Vector2(mpRatio, 1);
+            mpBarFillRt.offsetMin = Vector2.zero;
+            mpBarFillRt.offsetMax = Vector2.zero;
+            var mpBarFillImg = mpBarFillGo.AddComponent<Image>();
+            mpBarFillImg.color = new Color(0.2f, 0.65f, 0.95f);
+
+            // MP text (e.g. "48/48")
+            var mpTextGo = CreateTmpChild(headerGo, "MPText", $"{mp}/{maxMp}", 20,
+                new Color(0.6f, 0.9f, 1f), TextAlignmentOptions.MidlineLeft, FontStyles.Normal);
+            var mpTextRt = mpTextGo.GetComponent<RectTransform>();
+            mpTextRt.anchorMin = new Vector2(0.83f, 0);
+            mpTextRt.anchorMax = new Vector2(1f, 1);
+            mpTextRt.offsetMin = new Vector2(4, 8);
+            mpTextRt.offsetMax = new Vector2(-8, -4);
+
+            // ── Scroll area for cards ──
+            var scrollGo = new GameObject("ScrollView", typeof(RectTransform));
+            scrollGo.transform.SetParent(_selectionPanelGo.transform, false);
+            var scrollRt = scrollGo.GetComponent<RectTransform>();
+            scrollRt.anchorMin = new Vector2(0, 0);
+            scrollRt.anchorMax = new Vector2(1, 1);
+            scrollRt.offsetMin = new Vector2(8, 48);   // bottom: cancel button
+            scrollRt.offsetMax = new Vector2(-8, -50);  // top: header
+            var scrollRect = scrollGo.AddComponent<ScrollRect>();
+            scrollGo.AddComponent<RectMask2D>();
+            var scrollImg = scrollGo.AddComponent<Image>();
+            scrollImg.color = new Color(0, 0, 0, 0);  // transparent, needed for drag
+            scrollImg.raycastTarget = true;
+
+            var contentGo = new GameObject("Content", typeof(RectTransform));
+            contentGo.transform.SetParent(scrollGo.transform, false);
+            _selectionContent = contentGo.GetComponent<RectTransform>();
+            _selectionContent.anchorMin = new Vector2(0, 1);
+            _selectionContent.anchorMax = new Vector2(1, 1);
+            _selectionContent.pivot = new Vector2(0.5f, 1);
+            _selectionContent.anchoredPosition = Vector2.zero;
+            scrollRect.content = _selectionContent;
+            scrollRect.horizontal = false;
+            scrollRect.vertical = true;
+            scrollRect.movementType = ScrollRect.MovementType.Clamped;
+
+            // Grid layout
+            var grid = contentGo.AddComponent<GridLayoutGroup>();
+            grid.cellSize = new Vector2(cardW, cardH);
+            grid.spacing = new Vector2(gap, gap);
+            grid.padding = new RectOffset(8, 8, 8, 8);
+            grid.startCorner = GridLayoutGroup.Corner.UpperLeft;
+            grid.startAxis = GridLayoutGroup.Axis.Horizontal;
+            grid.childAlignment = TextAnchor.UpperCenter;
+            grid.constraint = GridLayoutGroup.Constraint.FixedColumnCount;
+            grid.constraintCount = cols;
+
+            var csf = contentGo.AddComponent<ContentSizeFitter>();
+            csf.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+
+            // ── Create cards ──
+            foreach (var card in cards)
+            {
+                CreateCard(contentGo.transform, card);
+            }
+
+            // ── Cancel / 返回 button at bottom ──
+            var cancelGo = new GameObject("CancelBtn", typeof(RectTransform));
+            cancelGo.transform.SetParent(_selectionPanelGo.transform, false);
+            var cancelRt = cancelGo.GetComponent<RectTransform>();
+            cancelRt.anchorMin = new Vector2(0.3f, 0);
+            cancelRt.anchorMax = new Vector2(0.7f, 0);
+            cancelRt.pivot = new Vector2(0.5f, 0);
+            cancelRt.anchoredPosition = new Vector2(0, 8);
+            cancelRt.sizeDelta = new Vector2(0, 36);
+            var cancelImg = cancelGo.AddComponent<Image>();
+            cancelImg.color = new Color(0.35f, 0.2f, 0.15f, 0.95f);
+            var cancelOutline = cancelGo.AddComponent<Outline>();
+            cancelOutline.effectColor = new Color(0.6f, 0.5f, 0.25f);
+            cancelOutline.effectDistance = new Vector2(1, -1);
+            var cancelBtn = cancelGo.AddComponent<Button>();
+            cancelBtn.targetGraphic = cancelImg;
+            cancelBtn.onClick.AddListener(() => onCancel?.Invoke());
+            CreateTmpChild(cancelGo, "Text", "返回", 20, Color.white,
+                TextAlignmentOptions.Center, FontStyles.Normal, true);
+        }
+
+        /// <summary>Create a single card in the grid (曹操传 style).</summary>
+        void CreateCard(Transform parent, CardData card)
+        {
+            // Card root
+            var cardGo = new GameObject("Card", typeof(RectTransform));
+            cardGo.transform.SetParent(parent, false);
+            var cardImg = cardGo.AddComponent<Image>();
+            cardImg.color = card.enabled ? new Color(0.14f, 0.13f, 0.16f, 0.95f)
+                                          : new Color(0.1f, 0.1f, 0.1f, 0.7f);
+            // Gold border
+            var cardOutline = cardGo.AddComponent<Outline>();
+            cardOutline.effectColor = card.enabled ? new Color(0.6f, 0.5f, 0.25f)
+                                                    : new Color(0.3f, 0.28f, 0.2f);
+            cardOutline.effectDistance = new Vector2(2, -2);
+
+            var btn = cardGo.AddComponent<Button>();
+            btn.targetGraphic = cardImg;
+            btn.interactable = card.enabled;
+            var btnColors = btn.colors;
+            btnColors.normalColor = Color.white;
+            btnColors.highlightedColor = new Color(1.2f, 1.15f, 1f);
+            btnColors.pressedColor = new Color(0.8f, 0.75f, 0.65f);
+            btnColors.disabledColor = new Color(0.5f, 0.5f, 0.5f, 0.6f);
+            btn.colors = btnColors;
+
+            var captured = card.onClick;
+            btn.onClick.AddListener(() => captured?.Invoke());
+
+            // ── Icon area (top portion of card) ──
+            var iconGo = new GameObject("Icon", typeof(RectTransform));
+            iconGo.transform.SetParent(cardGo.transform, false);
+            var iconRt = iconGo.GetComponent<RectTransform>();
+            iconRt.anchorMin = new Vector2(0.2f, 0.5f);
+            iconRt.anchorMax = new Vector2(0.8f, 0.95f);
+            iconRt.offsetMin = Vector2.zero;
+            iconRt.offsetMax = Vector2.zero;
+            var iconImg = iconGo.AddComponent<Image>();
+            if (card.icon != null)
+            {
+                iconImg.sprite = card.icon;
+                iconImg.preserveAspect = true;
+            }
+            else
+            {
+                // Placeholder: dark square with subtle icon hint
+                iconImg.color = new Color(0.2f, 0.18f, 0.22f, 0.8f);
+            }
+            iconImg.raycastTarget = false;
+
+            // ── Name (below icon) ──
+            var nameGo = CreateTmpChild(cardGo, "Name", card.name, 18,
+                card.enabled ? Color.white : new Color(0.5f, 0.5f, 0.5f),
+                TextAlignmentOptions.Center, FontStyles.Bold);
+            var nameRt = nameGo.GetComponent<RectTransform>();
+            nameRt.anchorMin = new Vector2(0, 0.28f);
+            nameRt.anchorMax = new Vector2(1, 0.48f);
+            nameRt.offsetMin = new Vector2(4, 0);
+            nameRt.offsetMax = new Vector2(-4, 0);
+
+            // ── Effect text (colored, e.g. "恢复生命") ──
+            var effectGo = CreateTmpChild(cardGo, "Effect", card.effectText, 14,
+                card.enabled ? card.effectColor : new Color(0.4f, 0.4f, 0.4f),
+                TextAlignmentOptions.Center, FontStyles.Bold);
+            var effectRt = effectGo.GetComponent<RectTransform>();
+            effectRt.anchorMin = new Vector2(0, 0.12f);
+            effectRt.anchorMax = new Vector2(1, 0.3f);
+            effectRt.offsetMin = new Vector2(4, 0);
+            effectRt.offsetMax = new Vector2(-4, 0);
+
+            // ── Bottom text (quantity or MP cost) ──
+            var bottomGo = CreateTmpChild(cardGo, "Bottom", card.bottomText, 16,
+                card.enabled ? new Color(0.9f, 0.85f, 0.7f) : new Color(0.4f, 0.4f, 0.4f),
+                TextAlignmentOptions.Center, FontStyles.Normal);
+            var bottomRt = bottomGo.GetComponent<RectTransform>();
+            bottomRt.anchorMin = new Vector2(0, 0);
+            bottomRt.anchorMax = new Vector2(1, 0.14f);
+            bottomRt.offsetMin = new Vector2(4, 2);
+            bottomRt.offsetMax = new Vector2(-4, 0);
+        }
+
+        /// <summary>Helper: create a TMP text child with full RectTransform stretch.</summary>
+        GameObject CreateTmpChild(GameObject parent, string goName, string text, float fontSize,
+            Color color, TextAlignmentOptions align, FontStyles style, bool stretch = false)
+        {
+            var go = new GameObject(goName, typeof(RectTransform));
+            go.transform.SetParent(parent.transform, false);
+            if (stretch)
+            {
+                var rt = go.GetComponent<RectTransform>();
+                rt.anchorMin = Vector2.zero;
+                rt.anchorMax = Vector2.one;
+                rt.offsetMin = Vector2.zero;
+                rt.offsetMax = Vector2.zero;
+            }
+            var tmp = go.AddComponent<TextMeshProUGUI>();
+            tmp.text = text;
+            tmp.fontSize = fontSize;
+            tmp.color = color;
+            tmp.alignment = align;
+            tmp.fontStyle = style;
+            tmp.raycastTarget = false;
+            return go;
+        }
+
+        void CloseSelectionPanel()
+        {
+            if (_selectionCanvas != null)
+            {
+                Destroy(_selectionCanvas.gameObject);
+                _selectionCanvas = null;
+                _selectionPanelGo = null;
+                _selectionContent = null;
+            }
         }
 
         void OnWaitPressed()
@@ -1149,13 +2114,16 @@ namespace CaoCao.Battle
         public void ExecuteAttack(BattleUnit attacker, BattleUnit target)
         {
             SetState(new AnimatingState());
+            // Focus camera on the combat area (midpoint between attacker and target)
+            Vector2 mid = (gridMap.CellToWorld(attacker.cell) + gridMap.CellToWorld(target.cell)) * 0.5f;
+            FocusCameraOn(mid);
             attacker.Attack(target);
             // Show target info during combat so player sees HP change
             ShowUnitInfo(target);
-            StartCoroutine(AfterAttack(attacker));
+            StartCoroutine(AfterAttack(attacker, target));
         }
 
-        IEnumerator AfterAttack(BattleUnit attacker)
+        IEnumerator AfterAttack(BattleUnit attacker, BattleUnit target)
         {
             yield return new WaitForSeconds(0.5f);
 
@@ -1164,6 +2132,12 @@ namespace CaoCao.Battle
                 ShowUnitInfo(SelectedUnit);
 
             // Check win/lose after attack
+            if (CheckBattleEnd()) yield break;
+
+            // Check battle events (unit death, HP threshold, proximity)
+            if (_eventManager != null)
+                yield return _eventManager.CheckAfterCombat(attacker, target);
+
             if (CheckBattleEnd()) yield break;
 
             attacker.Wait();
@@ -1203,11 +2177,22 @@ namespace CaoCao.Battle
                 var players = GetUnitsByTeam(UnitTeam.Player);
                 if (players.Count == 0) { CheckBattleEnd(); yield break; }
 
+                // Focus camera on the active enemy before its action
+                yield return StartCoroutine(FocusCameraOnUnit(enemy));
+
                 var target = _ai.ChooseAttackTarget(enemy, players);
                 if (target != null)
                 {
+                    // Focus on combat midpoint
+                    Vector2 mid = (gridMap.CellToWorld(enemy.cell) + gridMap.CellToWorld(target.cell)) * 0.5f;
+                    FocusCameraOn(mid);
                     enemy.Attack(target);
                     yield return new WaitForSeconds(0.5f);
+
+                    // Check events after enemy attack
+                    if (_eventManager != null)
+                        yield return _eventManager.CheckAfterCombat(enemy, target);
+
                     if (CheckBattleEnd()) yield break;
                     enemy.acted = true;
                     continue;
@@ -1216,21 +2201,39 @@ namespace CaoCao.Battle
                 var path = _ai.ChooseMoveTowards(enemy, players, enemies, gridMap, _pathfinder);
                 if (path.Count > 0)
                 {
+                    // Camera follows enemy during movement
+                    StartCameraFollow(enemy.transform);
                     bool moved = false;
                     enemy.OnMoved += _ => moved = true;
                     enemy.MoveAlongPath(path);
                     while (!moved) yield return null;
                     enemy.OnMoved -= _ => moved = true;
+                    StopCameraFollow();
+
+                    // Check events after enemy move (proximity, area_enter)
+                    if (_eventManager != null)
+                        yield return _eventManager.CheckAfterMove(enemy);
+
+                    if (_battleEnded) yield break;
 
                     target = _ai.ChooseAttackTarget(enemy, players);
                     if (target != null)
                     {
+                        // Focus on combat midpoint
+                        Vector2 mid = (gridMap.CellToWorld(enemy.cell) + gridMap.CellToWorld(target.cell)) * 0.5f;
+                        FocusCameraOn(mid);
                         enemy.Attack(target);
                         yield return new WaitForSeconds(0.5f);
+
+                        // Check events after enemy attack
+                        if (_eventManager != null)
+                            yield return _eventManager.CheckAfterCombat(enemy, target);
+
                         if (CheckBattleEnd()) yield break;
                     }
                 }
                 enemy.acted = true;
+                yield return new WaitForSeconds(0.2f); // Brief pause between enemy actions
             }
 
             // End enemy turn — start new player turn
@@ -1240,6 +2243,11 @@ namespace CaoCao.Battle
             EventBus.TurnChanged("player");
 
             yield return StartCoroutine(ShowTurnBanner($"第{_turnCount}回合 - 我方回合"));
+
+            // Turn start events for new player turn
+            if (_eventManager != null)
+                yield return _eventManager.CheckTurnStart(_turnCount);
+
             // Heal player units on healing terrain at new turn start
             ApplyTerrainHealing(UnitTeam.Player);
             SetEndTurnButtonVisible(true);
@@ -1471,6 +2479,22 @@ namespace CaoCao.Battle
             var result = _pathfinder.ComputeReachable(unit.cell, unit.mov);
             Reachable = result.Reachable;
             _parent = result.Parent;
+
+            // Debug: trace movement range calculation
+            Debug.Log($"[ComputeReachable] {unit.displayName}: cell={unit.cell}, MOV={unit.mov}, unitClass={unit.unitClass}, mapSize={gridMap.MapSize}, reachable={Reachable.Count} cells");
+            // Log costs of adjacent cells for debugging
+            var dirs = new Vector2Int[] { Vector2Int.up, Vector2Int.down, Vector2Int.left, Vector2Int.right };
+            foreach (var d in dirs)
+            {
+                var n = unit.cell + d;
+                bool inBounds = gridMap.IsInBounds(n);
+                int cost = inBounds ? gridMap.GetCost(n, unit.unitClass) : -99;
+                bool passable = inBounds && gridMap.IsPassable(n, unit.unitClass);
+                bool blocked = IsOccupied(n, unit);
+                var tt = inBounds ? gridMap.GetTerrainType(n) : null;
+                string ttInfo = tt != null ? $"id={tt.terrainId}, db={(tt.DbData != null ? "OK" : "NULL")}" : "null";
+                Debug.Log($"  neighbor {n}: inBounds={inBounds}, cost={cost}, passable={passable}, blocked={blocked}, terrain=[{ttInfo}]");
+            }
         }
 
         // --- Helpers ---
@@ -1496,7 +2520,7 @@ namespace CaoCao.Battle
             return false;
         }
 
-        List<BattleUnit> GetUnitsByTeam(UnitTeam team)
+        public List<BattleUnit> GetUnitsByTeam(UnitTeam team)
         {
             var list = new List<BattleUnit>();
             foreach (Transform child in unitsRoot)
@@ -1513,6 +2537,66 @@ namespace CaoCao.Battle
             foreach (var u in GetUnitsByTeam(team))
                 if (!u.acted) return false;
             return true;
+        }
+
+        // ── Battle Event API ──
+
+        /// <summary>
+        /// Find a BattleUnit by displayName. Returns first match.
+        /// </summary>
+        public BattleUnit FindUnitByName(string name, bool includeDead = false)
+        {
+            if (string.IsNullOrEmpty(name) || unitsRoot == null) return null;
+            foreach (Transform child in unitsRoot)
+            {
+                var u = child.GetComponent<BattleUnit>();
+                if (u == null) continue;
+                if (!includeDead && u.hp <= 0) continue;
+                if (u.displayName == name) return u;
+            }
+            // Fallback: partial match on unitTypeName
+            foreach (Transform child in unitsRoot)
+            {
+                var u = child.GetComponent<BattleUnit>();
+                if (u == null) continue;
+                if (!includeDead && u.hp <= 0) continue;
+                if (!string.IsNullOrEmpty(u.unitTypeName) && u.unitTypeName == name) return u;
+            }
+            return null;
+        }
+
+        /// <summary>
+        /// Spawn a new unit at runtime (for battle events: reinforcements, ambushes).
+        /// </summary>
+        public BattleUnit SpawnEventUnit(string displayName, UnitTeam team, Vector2Int cell,
+            int hp, int atk, int def, int mov)
+        {
+            var go = new GameObject($"EventUnit_{displayName}");
+            go.transform.SetParent(unitsRoot, false);
+            var unit = go.AddComponent<BattleUnit>();
+            unit.displayName = displayName;
+            unit.team = team;
+            unit.cell = cell;
+            unit.maxHp = hp;
+            unit.hp = hp;
+            unit.atk = atk;
+            unit.def = def;
+            unit.mov = mov;
+            unit.atkRange = 1;
+            unit.tileSize = tileSize;
+            unit.unitClass = Common.UnitClass.Infantry;
+
+            // Force immediate visual initialization (normally happens in Start)
+            // Position first so the unit appears in the right place
+            unit.UpdatePosition();
+            // EnsureVisual is called by BattleUnit.Start() on next frame,
+            // which creates sprite, animator, HP bar, and team tint.
+
+            // Subscribe death event
+            unit.OnDied += OnUnitDied;
+
+            Debug.Log($"[BattleController] Event spawned: {displayName} ({team}) at {cell}, HP={hp}");
+            return unit;
         }
 
         /// <summary>Get all cells within attack range from a position (Manhattan distance 1..atkRange).</summary>
@@ -1565,6 +2649,7 @@ namespace CaoCao.Battle
 
             // Get battle definition
             var battleDef = registry.GetBattle(gsm.State.currentBattleId);
+            if (battleDef != null) _battleDefName = battleDef.battleName;
             Debug.Log($"[BattleController] SpawnFromDeployment: battleId={gsm.State.currentBattleId}, battleDef={(battleDef != null ? battleDef.battleName : "NULL")}, deployed={deployedIds.Count}");
 
             // Spawn player heroes
@@ -1615,7 +2700,7 @@ namespace CaoCao.Battle
                 unit.cell = spawnCell;
                 unit.InitFromHero(heroData, heroDef);
 
-                Debug.Log($"[BattleController] Spawned player: {heroDef.displayName} at {spawnCell}, HP={unit.hp}/{unit.maxHp}, ATK={unit.atk}, DEF={unit.def}, MOV={unit.mov}");
+                Debug.Log($"[BattleController] Spawned player: {heroDef.displayName} at {spawnCell}, HP={unit.hp}/{unit.maxHp}, ATK={unit.atk}, DEF={unit.def}, MOV={unit.mov}, unitClass={unit.unitClass}, moveType={unit.movementType}");
             }
 
             // Spawn enemy units from battle definition with stats
@@ -1651,13 +2736,13 @@ namespace CaoCao.Battle
         void SpawnDemoUnits()
         {
             if (unitsRoot.childCount > 0) return;
-            SpawnUnit(new Vector2Int(2, 2), UnitTeam.Player);
-            SpawnUnit(new Vector2Int(4, 3), UnitTeam.Player);
-            SpawnUnit(new Vector2Int(8, 5), UnitTeam.Enemy);
-            SpawnUnit(new Vector2Int(9, 2), UnitTeam.Enemy);
+            SpawnUnit(new Vector2Int(2, 2), UnitTeam.Player, "曹操");
+            SpawnUnit(new Vector2Int(4, 3), UnitTeam.Player, "夏侯惇");
+            SpawnUnit(new Vector2Int(8, 5), UnitTeam.Enemy, "黄巾头目");
+            SpawnUnit(new Vector2Int(9, 2), UnitTeam.Enemy, "黄巾兵");
         }
 
-        void SpawnUnit(Vector2Int cell, UnitTeam team)
+        void SpawnUnit(Vector2Int cell, UnitTeam team, string name = null)
         {
             var go = new GameObject($"Unit_{team}_{cell}");
             go.transform.SetParent(unitsRoot);
@@ -1668,11 +2753,45 @@ namespace CaoCao.Battle
             // Demo: default to cavalry for testing terrain effects
             unit.unitClass = Common.UnitClass.Cavalry;
             unit.movementType = Common.MovementType.Cavalry;
-            unit.displayName = $"{(team == UnitTeam.Player ? "我军" : "敌军")}骑兵";
+            unit.displayName = name ?? $"{(team == UnitTeam.Player ? "我军" : "敌军")}骑兵";
             unit.unitTypeName = "骑兵";
             unit.mov = 7;
             unit.atkRange = 1;
-            Debug.Log($"[SpawnUnit] {unit.displayName} at {cell}, class={unit.unitClass}, atkRange={unit.atkRange}, mov={unit.mov}");
+            unit.maxMp = 20;
+            unit.mp = 20;
+
+            // Give player units demo skills for testing
+            if (team == UnitTeam.Player)
+            {
+                // Demo items go into shared party inventory (not per-unit)
+                // Only add once (when first player unit is spawned)
+                if (_demoSharedInventory.Count == 0)
+                {
+                    _demoSharedInventory.Add(new Data.ItemStack("hp_potion", 5));
+                    _demoSharedInventory.Add(new Data.ItemStack("hp_potion_large", 2));
+                }
+
+                // Demo skills: create runtime skill definitions
+                unit.skills.Add(CreateDemoSkill("fire_attack", "火攻", Common.SkillEffectType.Damage, 8, 2, 15));
+                unit.skills.Add(CreateDemoSkill("heal", "治疗", Common.SkillEffectType.Heal, 6, 1, 20));
+            }
+
+            Debug.Log($"[SpawnUnit] {unit.displayName} at {cell}, class={unit.unitClass}, atkRange={unit.atkRange}, mov={unit.mov}, skills={unit.skills.Count}");
+        }
+
+        /// <summary>Create a runtime SkillDefinition for demo/testing.</summary>
+        static Data.SkillDefinition CreateDemoSkill(string id, string name,
+            Common.SkillEffectType effectType, int mpCost, int range, int power)
+        {
+            var sk = ScriptableObject.CreateInstance<Data.SkillDefinition>();
+            sk.id = id;
+            sk.displayName = name;
+            sk.effectType = effectType;
+            sk.mpCost = mpCost;
+            sk.range = range;
+            sk.power = power;
+            sk.usableInBattle = true;
+            return sk;
         }
 
         void SyncMapSize()

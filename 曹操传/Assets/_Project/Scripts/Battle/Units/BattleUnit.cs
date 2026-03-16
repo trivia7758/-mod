@@ -1,5 +1,6 @@
 using System;
 using System.Collections;
+using System.Collections.Generic;
 using UnityEngine;
 using CaoCao.Common;
 using CaoCao.Data;
@@ -28,6 +29,10 @@ namespace CaoCao.Battle
         [Header("Movement")]
         public MovementType movementType = MovementType.Infantry;
         public UnitClass unitClass = UnitClass.Infantry;
+
+        [Header("Skills & Items")]
+        public List<SkillDefinition> skills = new();
+        public List<ItemStack> items = new();   // battle-local item copies
 
         [Header("State")]
         public UnitTeam team = UnitTeam.Player;
@@ -129,7 +134,7 @@ namespace CaoCao.Battle
             _animator.Init(_sprite);
         }
 
-        void EnsureHpBar()
+        public void EnsureHpBar()
         {
             if (_hpBarBg != null) return;
 
@@ -166,7 +171,7 @@ namespace CaoCao.Battle
             UpdateHpBar();
         }
 
-        void UpdatePosition()
+        public void UpdatePosition()
         {
             transform.position = new Vector3(
                 cell.x * tileSize.x + tileSize.x * 0.5f,
@@ -286,6 +291,127 @@ namespace CaoCao.Battle
             }
         }
 
+        /// <summary>Use a consumable item (HP/MP recovery).</summary>
+        public bool UseItem(ItemDefinition itemDef)
+        {
+            if (itemDef == null) return false;
+
+            // Find the item in inventory and consume 1
+            var stack = items.Find(s => s.itemId == itemDef.id && s.count > 0);
+            if (stack == null) return false;
+
+            if (itemDef.healAmount > 0)
+            {
+                int oldHp = hp;
+                hp = Mathf.Min(maxHp, hp + itemDef.healAmount);
+                Debug.Log($"[BattleUnit] {displayName} 使用 {itemDef.displayName}: HP {oldHp} → {hp} (+{hp - oldHp})");
+            }
+
+            // MP recovery items (use mpBonus as MP heal for consumables)
+            if (itemDef.mpBonus > 0)
+            {
+                int oldMp = mp;
+                mp = Mathf.Min(maxMp, mp + itemDef.mpBonus);
+                Debug.Log($"[BattleUnit] {displayName} 使用 {itemDef.displayName}: MP {oldMp} → {mp} (+{mp - oldMp})");
+            }
+
+            stack.count--;
+            if (stack.count <= 0) items.Remove(stack);
+            UpdateHpBar();
+            return true;
+        }
+
+        /// <summary>Use a skill on a target unit.</summary>
+        public bool UseSkill(SkillDefinition skillDef, BattleUnit target)
+        {
+            if (skillDef == null || mp < skillDef.mpCost) return false;
+            mp -= skillDef.mpCost;
+
+            switch (skillDef.effectType)
+            {
+                case SkillEffectType.Damage:
+                    int dmg = Mathf.Max(1, skillDef.power + atk / 2 - target.def / 2);
+                    target.hp -= dmg;
+                    target.UpdateHpBar();
+                    target._animator?.PlayHit();
+                    Debug.Log($"[BattleUnit] {displayName} 施展 {skillDef.displayName} → {target.displayName}: -{dmg} HP");
+                    if (target.hp <= 0)
+                    {
+                        target.hp = 0;
+                        target.UpdateHpBar();
+                        target._animator?.PlayDeath(() =>
+                        {
+                            if (target._hpBarBg != null) target._hpBarBg.gameObject.SetActive(false);
+                            if (target._hpBarFill != null) target._hpBarFill.gameObject.SetActive(false);
+                        });
+                        target.OnDied?.Invoke(target);
+                    }
+                    break;
+
+                case SkillEffectType.Heal:
+                    int heal = skillDef.power;
+                    int oldHp = target.hp;
+                    target.hp = Mathf.Min(target.maxHp, target.hp + heal);
+                    target.UpdateHpBar();
+                    Debug.Log($"[BattleUnit] {displayName} 施展 {skillDef.displayName} → {target.displayName}: HP +{target.hp - oldHp}");
+                    break;
+
+                case SkillEffectType.Buff:
+                    // TODO: implement buff system
+                    Debug.Log($"[BattleUnit] {displayName} 施展 {skillDef.displayName} → {target.displayName} (Buff - 暂未实装)");
+                    break;
+
+                case SkillEffectType.Debuff:
+                    // TODO: implement debuff system
+                    Debug.Log($"[BattleUnit] {displayName} 施展 {skillDef.displayName} → {target.displayName} (Debuff - 暂未实装)");
+                    break;
+            }
+
+            // Face towards target
+            var dir = GetDirection(cell, target.cell);
+            _animator?.PlayAttack(dir);
+
+            OnAttacked?.Invoke(this, target);
+            return true;
+        }
+
+        /// <summary>Force-kill this unit (for scripted events). Fires OnDied.</summary>
+        public void ForceKill()
+        {
+            hp = 0;
+            UpdateHpBar();
+
+            // Hide HP bar
+            if (_hpBarBg != null) _hpBarBg.gameObject.SetActive(false);
+            if (_hpBarFill != null) _hpBarFill.gameObject.SetActive(false);
+
+            // Play death animation (fade out sprite)
+            if (_animator != null)
+            {
+                _animator.PlayDeath(() =>
+                {
+                    // HP bar already hidden above
+                });
+            }
+
+            OnDied?.Invoke(this);
+        }
+
+        /// <summary>Apply scripted damage. Fires OnDied if lethal.</summary>
+        public void TakeDamage(int amount)
+        {
+            hp = Mathf.Max(0, hp - amount);
+            UpdateHpBar();
+            _animator?.PlayHit();
+            if (hp <= 0)
+            {
+                if (_hpBarBg != null) _hpBarBg.gameObject.SetActive(false);
+                if (_hpBarFill != null) _hpBarFill.gameObject.SetActive(false);
+                _animator?.PlayDeath();
+                OnDied?.Invoke(this);
+            }
+        }
+
         public void Wait()
         {
             acted = true;
@@ -312,7 +438,7 @@ namespace CaoCao.Battle
             }
         }
 
-        void UpdateHpBar()
+        public void UpdateHpBar()
         {
             if (_hpBarFill == null) return;
             float ratio = maxHp > 0 ? (float)hp / maxHp : 0;
@@ -355,6 +481,7 @@ namespace CaoCao.Battle
             {
                 unitTypeName = heroDef.defaultUnitType.displayName;
                 movementType = heroDef.defaultUnitType.movementType;
+                unitClass = heroDef.defaultUnitType.unitClass;
             }
 
             // Try to load portrait from Resources if not assigned in definition
@@ -370,13 +497,24 @@ namespace CaoCao.Battle
             this.def = runtime.def;
             mov = runtime.mov;
             team = UnitTeam.Player;
+
+            // Copy learnable skills (up to current level)
+            skills.Clear();
+            if (heroDef.learnableSkills != null)
+            {
+                foreach (var sk in heroDef.learnableSkills)
+                {
+                    if (sk != null && sk.learnLevel <= level)
+                        skills.Add(sk);
+                }
+            }
         }
 
         /// <summary>
         /// Try to load a portrait sprite from Resources/Portraits/ folder.
         /// Tries heroId first, then known aliases.
         /// </summary>
-        static Sprite LoadPortraitFromResources(string heroId)
+        public static Sprite LoadPortraitFromResources(string heroId)
         {
             // Try direct hero ID match
             var sprite = Resources.Load<Sprite>($"Portraits/{heroId}");

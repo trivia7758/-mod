@@ -14,14 +14,14 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::CaoCao.Battle.TerrainType
   terrainId: mountain
   terrainName: "\u5C71\u5730"
-  defaultMovementCost: -1
+  defaultMovementCost: 3
   movementCosts:
   - movementType: 0
-    cost: 3
+    cost: 2
   - movementType: 1
-    cost: -1
-  - movementType: 2
     cost: 3
+  - movementType: 2
+    cost: 2
   - movementType: 3
     cost: -1
   hitBonus: 0

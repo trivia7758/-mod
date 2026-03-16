@@ -1,0 +1,169 @@
+# ============================================================
+# Battle Event DSL Reference (战斗事件脚本参考)
+# ============================================================
+#
+# File location: Resources/Data/BattleEvents/{battleName}.battle.dsl.txt
+# battleName matches the BattleDefinition.battleName field.
+#
+# Comments: # // ;
+# Strings: use "quotes" for text with spaces
+# Numbers: integers only (except wait which supports float)
+#
+# ============================================================
+# TOP-LEVEL COMMANDS
+# ============================================================
+#
+# actor <name> <left|right|center>
+#   Declare a character's dialogue portrait position.
+#   Must be declared before any events that use this character.
+#
+# event <id>
+#   ... (trigger, conditions, actions)
+# end_event
+#   Define a battle event block. Each event fires only ONCE.
+#
+# ============================================================
+# TRIGGERS (exactly one per event)
+# ============================================================
+#
+# trigger battle_start
+#   Fires at the very start of the battle.
+#
+# trigger turn_start <N>
+#   Fires at the start of turn N.
+#
+# trigger proximity <unitA> <unitB>
+#   Fires when unitA and unitB are on adjacent cells
+#   (8-neighbor: diagonal counts). Works whether player
+#   walks to enemy or enemy walks to player.
+#
+# trigger unit_died <unitName>
+#   Fires when the named unit's HP reaches 0.
+#
+# trigger hp_below <unitName> <percent>
+#   Fires when the unit's HP drops below N% of max.
+#
+# trigger area_enter <player|enemy|any> <x1> <y1> <x2> <y2>
+#   Fires when any unit of the specified team enters the
+#   rectangular area from (x1,y1) to (x2,y2).
+#
+# ============================================================
+# CONDITIONS (optional, zero or more per event)
+# ============================================================
+#
+# condition flag <name>          -- flag must be set
+# condition not_flag <name>      -- flag must NOT be set
+# condition unit_alive <name>    -- unit must be alive
+# condition unit_dead <name>     -- unit must be dead
+# condition turn_ge <N>          -- current turn >= N
+#
+# ============================================================
+# ACTION COMMANDS
+# ============================================================
+#
+# --- Dialogue ---
+# talk <unitName> "text"         -- show dialogue (typewriter)
+# talk narrator "text"           -- narrator (center, no portrait)
+# hide_dialogue                  -- hide dialogue box
+#
+# --- Timing ---
+# wait <seconds>                 -- pause (supports decimals: 0.5)
+#
+# --- Camera ---
+# camera_focus <unitName>        -- pan camera to unit
+# camera_focus <x> <y>           -- pan camera to cell
+#
+# --- Unit Spawning ---
+# spawn <name> <player|enemy> <x> <y> [hp=N atk=N def=N mov=N]
+#   Spawn a new unit at the given cell. Key=value pairs for stats.
+#   Example: spawn 伏兵 enemy 5 3 hp=20 atk=8 def=3 mov=4
+#
+# --- Movement ---
+# move <unitName> <x> <y>        -- animate walk to cell
+# setpos <unitName> <x> <y>      -- teleport (no animation)
+# face <unitName> <up|down|left|right>  -- change facing
+#
+# --- Combat Effects ---
+# damage <unitName> <amount>      -- deal fixed damage
+# heal <unitName> <amount>        -- restore HP
+# kill <unitName>                 -- instant kill (with death anim)
+#
+# --- Buffs ---
+# buff <unitName> <stat> <amount>
+#   Modify a stat: atk, def, mov, hp, mp
+#   Example: buff 曹操 atk 5
+#
+# buff_team <player|enemy> <stat> <amount>
+#   Buff all units on a team.
+#   Example: buff_team player def 3
+#
+# --- Team Change ---
+# change_team <unitName> <player|enemy>
+#   Switch a unit's allegiance (defection, recruitment).
+#
+# --- Flags ---
+# set_flag <name>                -- set a battle flag
+# clear_flag <name>              -- clear a battle flag
+#
+# --- Duel (单挑) ---
+# duel_begin <unitA> <unitB>
+#   face <unit> <direction>
+#   attack <attacker> <target>   -- play attack animation ONLY (no damage)
+#   wait <seconds>
+# duel_end
+#
+#   Duel blocks are purely for animation. Actual damage/kill
+#   effects should be done with separate commands AFTER duel_end.
+#
+# ============================================================
+# EXAMPLE: Full Battle Script
+# ============================================================
+#
+# actor 曹操 left
+# actor 吕布 right
+# actor narrator center
+#
+# event opening
+#   trigger battle_start
+#   camera_focus 曹操
+#   talk 曹操 "众将听令，随我冲杀！"
+#   hide_dialogue
+# end_event
+#
+# event reinforcements
+#   trigger turn_start 3
+#   talk narrator "敌方援军出现了！"
+#   spawn 伏兵A enemy 8 12 hp=25 atk=8 def=3 mov=4
+#   spawn 伏兵B enemy 9 12 hp=20 atk=7 def=2 mov=5
+#   move 伏兵A 8 10
+#   hide_dialogue
+# end_event
+#
+# event duel_lubu
+#   trigger proximity 曹操 吕布
+#   camera_focus 曹操
+#   talk 曹操 "吕布！今日便是你的死期！"
+#   talk 吕布 "哼，就凭你？"
+#   duel_begin 曹操 吕布
+#     face 曹操 right
+#     face 吕布 left
+#     attack 曹操 吕布
+#     wait 0.3
+#     attack 吕布 曹操
+#     wait 0.3
+#     attack 曹操 吕布
+#   duel_end
+#   damage 吕布 20
+#   talk 曹操 "纳命来！"
+#   hide_dialogue
+# end_event
+#
+# event boss_low
+#   trigger hp_below 吕布 30
+#   condition unit_alive 吕布
+#   camera_focus 吕布
+#   talk 吕布 "可恶……我先撤退！"
+#   set_flag boss_fled
+#   kill 吕布
+#   hide_dialogue
+# end_event

@@ -13,18 +13,18 @@ MonoBehaviour:
   m_Name: castle
   m_EditorClassIdentifier: Assembly-CSharp::CaoCao.Battle.TerrainType
   terrainId: castle
-  terrainName: "\u57CE\u5899"
-  defaultMovementCost: 2
+  terrainName: "\u57CE\u6C60"
+  defaultMovementCost: 1
   movementCosts:
   - movementType: 0
-    cost: 2
+    cost: 1
   - movementType: 1
-    cost: -1
+    cost: 1
   - movementType: 2
-    cost: 2
+    cost: 1
   - movementType: 3
     cost: -1
-  hitBonus: 10
-  avoidBonus: 30
+  hitBonus: 20
+  avoidBonus: 20
   healPerTurn: 0
-  minimapColor: {r: 0.5, g: 0.5, b: 0.5, a: 1}
+  minimapColor: {r: 0.75, g: 0.7, b: 0.5, a: 1}

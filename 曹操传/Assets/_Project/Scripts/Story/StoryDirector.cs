@@ -84,7 +84,14 @@ namespace CaoCao.Story
 
             if (sceneData == null)
             {
-                Debug.LogError("[StoryDirector] No StorySceneData assigned!");
+                Debug.LogWarning("[StoryDirector] No StorySceneData assigned — skipping to camp");
+                // Ensure CampManager exists
+                if (FindAnyObjectByType<CampManager>() == null)
+                {
+                    var go = new GameObject("CampManager");
+                    go.AddComponent<CampManager>();
+                }
+                EventBus.StoryCompleted();
                 return;
             }
 
@@ -132,20 +139,18 @@ namespace CaoCao.Story
 
         void CreateSkipButton()
         {
-            // Find existing UI Canvas or create one
-            var canvas = FindAnyObjectByType<Canvas>();
-            if (canvas == null)
-            {
-                var canvasGo = new GameObject("StoryUICanvas");
-                canvas = canvasGo.AddComponent<Canvas>();
-                canvas.renderMode = RenderMode.ScreenSpaceOverlay;
-                canvas.sortingOrder = 50;
-                var scaler = canvasGo.AddComponent<CanvasScaler>();
-                scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
-                scaler.referenceResolution = new Vector2(1280, 720);
-                scaler.matchWidthOrHeight = 0.5f;
-                canvasGo.AddComponent<GraphicRaycaster>();
-            }
+            // Always create a dedicated canvas for the skip button
+            // (reusing FindAnyObjectByType<Canvas>() can find the FadeOverlay canvas
+            //  which has CanvasGroup alpha=0, making the button invisible)
+            var canvasGo = new GameObject("SkipButtonCanvas");
+            var canvas = canvasGo.AddComponent<Canvas>();
+            canvas.renderMode = RenderMode.ScreenSpaceOverlay;
+            canvas.sortingOrder = 50;
+            var scaler = canvasGo.AddComponent<CanvasScaler>();
+            scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+            scaler.referenceResolution = new Vector2(1280, 720);
+            scaler.matchWidthOrHeight = 0.5f;
+            canvasGo.AddComponent<GraphicRaycaster>();
 
             _skipButtonGo = new GameObject("SkipStoryBtn");
             _skipButtonGo.transform.SetParent(canvas.transform, false);
@@ -198,9 +203,8 @@ namespace CaoCao.Story
 
             Debug.Log("[StoryDirector] Story skip requested — fast-forwarding to end");
 
-            // Remove skip button immediately
-            if (_skipButtonGo != null)
-                Destroy(_skipButtonGo);
+            // Remove skip button and its canvas immediately
+            DestroySkipButton();
 
             // Stop the running story coroutine
             if (_runCoroutine != null)
@@ -232,6 +236,20 @@ namespace CaoCao.Story
             }
 
             EventBus.StoryCompleted();
+        }
+
+        void DestroySkipButton()
+        {
+            if (_skipButtonGo != null)
+            {
+                // Destroy the parent canvas we created for this button
+                var parentCanvas = _skipButtonGo.GetComponentInParent<Canvas>();
+                if (parentCanvas != null && parentCanvas.gameObject.name == "SkipButtonCanvas")
+                    Destroy(parentCanvas.gameObject);
+                else
+                    Destroy(_skipButtonGo);
+                _skipButtonGo = null;
+            }
         }
 
         void PositionCamera()
@@ -339,7 +357,7 @@ namespace CaoCao.Story
             // Story complete — CampManager listens for this event and shows camp overlay
             Debug.Log("[StoryDirector] Story complete, firing StoryCompleted event");
             HideDialogue();
-            if (_skipButtonGo != null) Destroy(_skipButtonGo);
+            DestroySkipButton();
 
             // Ensure CampManager exists (for when starting directly from StoryScene without Boot)
             if (FindAnyObjectByType<CampManager>() == null)

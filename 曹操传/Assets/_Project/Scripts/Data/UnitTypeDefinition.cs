@@ -17,6 +17,9 @@ namespace CaoCao.Data
         [Header("Movement")]
         public MovementType movementType = MovementType.Infantry;
 
+        [Header("Unit Class (兵种分类, 决定地形消耗)")]
+        public UnitClass unitClass = UnitClass.Infantry;
+
         [Header("Stat Modifiers")]
         public int atkModifier;
         public int defModifier;
