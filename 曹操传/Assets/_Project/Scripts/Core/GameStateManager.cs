@@ -111,6 +111,9 @@ namespace CaoCao.Core
                     ? heroDef.defaultUnitType.id : ""
             };
 
+            // Initialize five dimensions from base definition
+            runtime.InitializeFiveDimensions(heroDef);
+
             // Set current HP/MP to max
             runtime.RecalculateStats(heroDef, _registry);
             runtime.currentHp = runtime.maxHp;

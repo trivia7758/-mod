@@ -257,12 +257,12 @@ namespace CaoCao.Camp
             CreateSectionHeader(_tabContentParent, "基本能力",
                 new Vector2(0.02f, 0.42f), new Vector2(0.98f, 0.5f));
 
-            // Layout: Left column = 六维 (text only), Right column = combat stats (bars)
+            // Layout: Left column = 五维 (text only), Right column = combat stats (bars)
             float startY = 0.35f;
             float rowH = 0.06f;
 
-            // ── Left column: 六维 text labels (no bars) ──
-            string[] leftNames = { "武力", "智力", "统帅", "敏捷", "气运", "破敌" };
+            // ── Left column: 五维 text labels + growth summary (no bars) ──
+            string[] leftNames = { "武力", "智力", "统帅", "敏捷", "气运", "成长" };
             for (int i = 0; i < 6; i++)
             {
                 float y = startY - i * rowH;
@@ -654,22 +654,38 @@ namespace CaoCao.Camp
             SetBar(1, hero.currentMp, hero.maxMp);
             SetBar(2, hero.exp, expNeeded);
 
-            // ── Left column: 六维 text (no bars) ──
-            int f = heroDef?.force ?? 0;
-            int intel = heroDef?.intelligence ?? 0;
-            int cmd = heroDef?.command ?? 0;
-            int agi = heroDef?.agility ?? 0;
-            int lk = heroDef?.luck ?? 0;
-            int brk = heroDef?.breakthrough ?? 0;
+            // ── Left column: 五维 text with growth grades (no bars) ──
+            // Use runtime values (which grow on level up) instead of static definition values
+            int f = hero.force > 0 ? hero.force : (heroDef?.force ?? 0);
+            int intel = hero.intelligence > 0 ? hero.intelligence : (heroDef?.intelligence ?? 0);
+            int cmd = hero.command > 0 ? hero.command : (heroDef?.command ?? 0);
+            int agi = hero.agility > 0 ? hero.agility : (heroDef?.agility ?? 0);
+            int lk = hero.luck > 0 ? hero.luck : (heroDef?.luck ?? 0);
 
-            if (_leftStatTexts.Count >= 6)
+            if (_leftStatTexts.Count >= 6 && heroDef != null)
+            {
+                // Recalculate current grades for display
+                hero.RecalculateGrades(heroDef);
+
+                _leftStatTexts[0].text = FormatDimension("武力", f, hero.forceGrade);
+                _leftStatTexts[1].text = FormatDimension("智力", intel, hero.intelligenceGrade);
+                _leftStatTexts[2].text = FormatDimension("统帅", cmd, hero.commandGrade);
+                _leftStatTexts[3].text = FormatDimension("敏捷", agi, hero.agilityGrade);
+                _leftStatTexts[4].text = FormatDimension("气运", lk, hero.luckGrade);
+                _leftStatTexts[5].text = $"成长  +{CaoCao.Data.AttributeGrowthSystem.GetGrowthValue(hero.forceGrade)}/" +
+                    $"+{CaoCao.Data.AttributeGrowthSystem.GetGrowthValue(hero.intelligenceGrade)}/" +
+                    $"+{CaoCao.Data.AttributeGrowthSystem.GetGrowthValue(hero.commandGrade)}/" +
+                    $"+{CaoCao.Data.AttributeGrowthSystem.GetGrowthValue(hero.agilityGrade)}/" +
+                    $"+{CaoCao.Data.AttributeGrowthSystem.GetGrowthValue(hero.luckGrade)}";
+            }
+            else if (_leftStatTexts.Count >= 6)
             {
                 _leftStatTexts[0].text = $"武力  {f}";
                 _leftStatTexts[1].text = $"智力  {intel}";
                 _leftStatTexts[2].text = $"统帅  {cmd}";
                 _leftStatTexts[3].text = $"敏捷  {agi}";
                 _leftStatTexts[4].text = $"气运  {lk}";
-                _leftStatTexts[5].text = $"破敌  {brk}";
+                _leftStatTexts[5].text = "";
             }
 
             // ── Right column: combat stat bars (indices 3-7) ──
@@ -701,6 +717,13 @@ namespace CaoCao.Camp
             float ratio = maxRef > 0 ? Mathf.Clamp01((float)value / maxRef) : 0;
             bar.fillRt.anchorMax = new Vector2(ratio, 1);
             bar.valueText.text = text;
+        }
+
+        string FormatDimension(string name, int value, CaoCao.Common.GrowthGrade grade)
+        {
+            string gradeName = CaoCao.Data.AttributeGrowthSystem.GetGradeDisplayName(grade);
+            string colorHex = CaoCao.Data.AttributeGrowthSystem.GetGradeColorHex(grade);
+            return $"{name}  {value}  <color={colorHex}>{gradeName}</color>";
         }
 
         void RefreshUnitTypeTab(HeroRuntimeData hero, HeroDefinition heroDef)

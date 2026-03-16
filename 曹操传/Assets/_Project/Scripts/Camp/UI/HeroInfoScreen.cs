@@ -33,13 +33,13 @@ namespace CaoCao.Camp
         [SerializeField] TMP_Text spdText;
         [SerializeField] TMP_Text movText;
 
-        [Header("Base Attributes (六维)")]
+        [Header("Base Attributes (五维)")]
         [SerializeField] TMP_Text forceText;            // 武力
         [SerializeField] TMP_Text intelligenceText;     // 智力
         [SerializeField] TMP_Text commandText;          // 统帅
         [SerializeField] TMP_Text agilityText;          // 敏捷
-        [SerializeField] TMP_Text luckText;             // 运气
-        [SerializeField] TMP_Text breakthroughText;     // 破敌
+        [SerializeField] TMP_Text luckText;             // 气运
+        [SerializeField] TMP_Text breakthroughText;     // 成长
 
         [Header("Tabs")]
         [SerializeField] Button abilityTab;             // 能力
@@ -122,7 +122,7 @@ namespace CaoCao.Camp
 
             RefreshIdentity(runtime, heroDef);
             RefreshStats(runtime, heroDef);
-            RefreshAttributes(heroDef);
+            RefreshAttributes(runtime, heroDef);
             RefreshEquipment(runtime);
             ShowTab(_activeTab);
         }
@@ -163,14 +163,21 @@ namespace CaoCao.Camp
             if (movText != null) movText.text = $"移动: {runtime.mov}";
         }
 
-        void RefreshAttributes(HeroDefinition heroDef)
+        void RefreshAttributes(HeroRuntimeData runtime, HeroDefinition heroDef)
         {
-            if (forceText != null) forceText.text = $"武力  {heroDef.force}";
-            if (intelligenceText != null) intelligenceText.text = $"智力  {heroDef.intelligence}";
-            if (commandText != null) commandText.text = $"统帅  {heroDef.command}";
-            if (agilityText != null) agilityText.text = $"敏捷  {heroDef.agility}";
-            if (luckText != null) luckText.text = $"运气  {heroDef.luck}";
-            if (breakthroughText != null) breakthroughText.text = $"破敌  {heroDef.breakthrough}";
+            // Use runtime five dimensions (which grow on level up)
+            int f = runtime?.force > 0 ? runtime.force : heroDef.force;
+            int intel = runtime?.intelligence > 0 ? runtime.intelligence : heroDef.intelligence;
+            int cmd = runtime?.command > 0 ? runtime.command : heroDef.command;
+            int agi = runtime?.agility > 0 ? runtime.agility : heroDef.agility;
+            int lk = runtime?.luck > 0 ? runtime.luck : heroDef.luck;
+
+            if (forceText != null) forceText.text = $"武力  {f}";
+            if (intelligenceText != null) intelligenceText.text = $"智力  {intel}";
+            if (commandText != null) commandText.text = $"统帅  {cmd}";
+            if (agilityText != null) agilityText.text = $"敏捷  {agi}";
+            if (luckText != null) luckText.text = $"气运  {lk}";
+            if (breakthroughText != null) breakthroughText.text = "";
         }
 
         void RefreshEquipment(HeroRuntimeData runtime)

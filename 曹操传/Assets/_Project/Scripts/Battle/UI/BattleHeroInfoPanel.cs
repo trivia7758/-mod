@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
+using CaoCao.Common;
 using CaoCao.Core;
 using CaoCao.Camp;
 using CaoCao.Data;
@@ -485,7 +486,7 @@ namespace CaoCao.Battle
             float startY = 0.35f;
             float rowH = 0.06f;
 
-            string[] leftNames = { "武力", "智力", "统帅", "敏捷", "气运", "破敌" };
+            string[] leftNames = { "武力", "智力", "统帅", "敏捷", "气运", "成长" };
             for (int i = 0; i < 6; i++)
             {
                 float y = startY - i * rowH;
@@ -522,21 +523,35 @@ namespace CaoCao.Battle
             SetBar(1, mp, maxMp);
             SetBar(2, expVal, expNeeded);
 
-            int f = _heroDef?.force ?? 0;
-            int intel = _heroDef?.intelligence ?? 0;
-            int cmd = _heroDef?.command ?? 0;
-            int agi = _heroDef?.agility ?? 0;
-            int lk = _heroDef?.luck ?? 0;
-            int brk = _heroDef?.breakthrough ?? 0;
+            // Use runtime values (which grow) if available, fallback to definition
+            int f = _heroRuntime?.force > 0 ? _heroRuntime.force : (_heroDef?.force ?? 0);
+            int intel = _heroRuntime?.intelligence > 0 ? _heroRuntime.intelligence : (_heroDef?.intelligence ?? 0);
+            int cmd = _heroRuntime?.command > 0 ? _heroRuntime.command : (_heroDef?.command ?? 0);
+            int agi = _heroRuntime?.agility > 0 ? _heroRuntime.agility : (_heroDef?.agility ?? 0);
+            int lk = _heroRuntime?.luck > 0 ? _heroRuntime.luck : (_heroDef?.luck ?? 0);
 
-            if (_leftStatTexts.Count >= 6)
+            if (_leftStatTexts.Count >= 6 && _heroDef != null && _heroRuntime != null)
+            {
+                _heroRuntime.RecalculateGrades(_heroDef);
+                _leftStatTexts[0].text = FormatDimension("武力", f, _heroRuntime.forceGrade);
+                _leftStatTexts[1].text = FormatDimension("智力", intel, _heroRuntime.intelligenceGrade);
+                _leftStatTexts[2].text = FormatDimension("统帅", cmd, _heroRuntime.commandGrade);
+                _leftStatTexts[3].text = FormatDimension("敏捷", agi, _heroRuntime.agilityGrade);
+                _leftStatTexts[4].text = FormatDimension("气运", lk, _heroRuntime.luckGrade);
+                _leftStatTexts[5].text = $"成长  +{AttributeGrowthSystem.GetGrowthValue(_heroRuntime.forceGrade)}/" +
+                    $"+{AttributeGrowthSystem.GetGrowthValue(_heroRuntime.intelligenceGrade)}/" +
+                    $"+{AttributeGrowthSystem.GetGrowthValue(_heroRuntime.commandGrade)}/" +
+                    $"+{AttributeGrowthSystem.GetGrowthValue(_heroRuntime.agilityGrade)}/" +
+                    $"+{AttributeGrowthSystem.GetGrowthValue(_heroRuntime.luckGrade)}";
+            }
+            else if (_leftStatTexts.Count >= 6)
             {
                 _leftStatTexts[0].text = $"武力  {f}";
                 _leftStatTexts[1].text = $"智力  {intel}";
                 _leftStatTexts[2].text = $"统帅  {cmd}";
                 _leftStatTexts[3].text = $"敏捷  {agi}";
                 _leftStatTexts[4].text = $"气运  {lk}";
-                _leftStatTexts[5].text = $"破敌  {brk}";
+                _leftStatTexts[5].text = "";
             }
 
             SetBarAbs(3, _unit.atk, 200, _unit.atk.ToString());
@@ -795,6 +810,13 @@ namespace CaoCao.Battle
             float ratio = maxRef > 0 ? Mathf.Clamp01((float)value / maxRef) : 0;
             bar.fillRt.anchorMax = new Vector2(ratio, 1);
             bar.valueText.text = text;
+        }
+
+        string FormatDimension(string name, int value, CaoCao.Common.GrowthGrade grade)
+        {
+            string gradeName = AttributeGrowthSystem.GetGradeDisplayName(grade);
+            string colorHex = AttributeGrowthSystem.GetGradeColorHex(grade);
+            return $"{name}  {value}  <color={colorHex}>{gradeName}</color>";
         }
 
         string GetItemBonusDesc(string itemId)

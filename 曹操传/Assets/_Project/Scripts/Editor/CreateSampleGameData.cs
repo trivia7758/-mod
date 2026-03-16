@@ -129,28 +129,39 @@ namespace CaoCao.Editor
             var defDrug = CreateItem("def_drug", "防御丹", "永久提升防御力1点",
                 ItemType.Consumable, defBonus: 1, buyPrice: 500, sellPrice: 250);
 
-            // Heroes — Protagonist
+            // Heroes — Protagonist (张强: 穿越者, 均衡成长型)
             var zhangQiang = CreateHero("zhang_qiang", "张强",
-                force: 50, intelligence: 75, command: 40, agility: 60, luck: 70, breakthrough: 30,
+                force: 50, intelligence: 75, command: 40, agility: 60, luck: 70,
+                forceGrade: GrowthGrade.B, intGrade: GrowthGrade.B, cmdGrade: GrowthGrade.B,
+                agiGrade: GrowthGrade.A, luckGrade: GrowthGrade.A,
                 maxHp: 100, maxMp: 40, atk: 10, def: 8, mov: 5, speed: 6,
                 unitType: student, isRequired: true, recruitChapter: 0,
                 skills: new SkillDefinition[0]);
 
             // Heroes — Three Kingdoms
+            // 曹操: 全能型领袖, 统帅极高
             var caoCao = CreateHero("cao_cao", "曹操",
-                force: 85, intelligence: 90, command: 95, agility: 70, luck: 80, breakthrough: 75,
+                force: 85, intelligence: 90, command: 95, agility: 70, luck: 80,
+                forceGrade: GrowthGrade.A, intGrade: GrowthGrade.S, cmdGrade: GrowthGrade.EX,
+                agiGrade: GrowthGrade.B, luckGrade: GrowthGrade.S,
                 maxHp: 120, maxMp: 60, atk: 15, def: 12, mov: 5, speed: 7,
                 unitType: lightInfantry, isRequired: true, recruitChapter: 0,
                 skills: new[] { fireAttack, encourage });
 
+            // 夏侯惇: 猛将型, 武力极高
             var xiahouDun = CreateHero("xiahou_dun", "夏侯惇",
-                force: 92, intelligence: 50, command: 78, agility: 75, luck: 60, breakthrough: 88,
+                force: 92, intelligence: 50, command: 78, agility: 75, luck: 60,
+                forceGrade: GrowthGrade.S, intGrade: GrowthGrade.C, cmdGrade: GrowthGrade.B,
+                agiGrade: GrowthGrade.A, luckGrade: GrowthGrade.B,
                 maxHp: 150, maxMp: 30, atk: 18, def: 14, mov: 5, speed: 6,
                 unitType: lightInfantry, isRequired: false, recruitChapter: 0,
                 skills: new[] { encourage });
 
+            // 郭嘉: 智囊型, 智力极高但体弱
             var guoJia = CreateHero("guo_jia", "郭嘉",
-                force: 40, intelligence: 97, command: 82, agility: 65, luck: 85, breakthrough: 30,
+                force: 40, intelligence: 97, command: 82, agility: 65, luck: 85,
+                forceGrade: GrowthGrade.C, intGrade: GrowthGrade.EX, cmdGrade: GrowthGrade.A,
+                agiGrade: GrowthGrade.B, luckGrade: GrowthGrade.A,
                 maxHp: 80, maxMp: 80, atk: 8, def: 6, mov: 4, speed: 8,
                 unitType: lightInfantry, isRequired: false, recruitChapter: 0,
                 skills: new[] { fireAttack, heal });
@@ -287,7 +298,9 @@ namespace CaoCao.Editor
         }
 
         static HeroDefinition CreateHero(string id, string name,
-            int force, int intelligence, int command, int agility, int luck, int breakthrough,
+            int force, int intelligence, int command, int agility, int luck,
+            GrowthGrade forceGrade, GrowthGrade intGrade, GrowthGrade cmdGrade,
+            GrowthGrade agiGrade, GrowthGrade luckGrade,
             int maxHp, int maxMp, int atk, int def, int mov, int speed,
             UnitTypeDefinition unitType, bool isRequired, int recruitChapter,
             SkillDefinition[] skills)
@@ -300,7 +313,11 @@ namespace CaoCao.Editor
             so.command = command;
             so.agility = agility;
             so.luck = luck;
-            so.breakthrough = breakthrough;
+            so.forceGrade = forceGrade;
+            so.intelligenceGrade = intGrade;
+            so.commandGrade = cmdGrade;
+            so.agilityGrade = agiGrade;
+            so.luckGrade = luckGrade;
             so.baseMaxHp = maxHp;
             so.baseMaxMp = maxMp;
             so.baseAtk = atk;

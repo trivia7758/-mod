@@ -77,4 +77,19 @@ namespace CaoCao.Common
         Armor,      // 防具
         Auxiliary   // 辅助
     }
+
+    /// <summary>
+    /// Growth grade for five-dimension attributes (五维成长档位).
+    /// Determines per-level growth value and promotion thresholds.
+    /// </summary>
+    public enum GrowthGrade
+    {
+        C      = 0,  // 成长值 1
+        B      = 1,  // 成长值 2
+        A      = 2,  // 成长值 3
+        S      = 3,  // 成长值 4
+        SS     = 4,  // 成长值 5
+        EX     = 5,  // 成长值 6
+        EXPlus = 6   // 成长值 7 (EX+)
+    }
 }

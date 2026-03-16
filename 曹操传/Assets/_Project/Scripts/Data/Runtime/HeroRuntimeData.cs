@@ -1,5 +1,6 @@
 using System;
 using UnityEngine;
+using CaoCao.Common;
 
 namespace CaoCao.Data
 {
@@ -16,6 +17,13 @@ namespace CaoCao.Data
         [Header("Progression")]
         public int level = 1;
         public int exp = 0;
+
+        [Header("Five Dimensions (五维) - Grows via grade system")]
+        public int force;                   // 武力
+        public int intelligence;            // 智力
+        public int command;                 // 统帅
+        public int agility;                 // 敏捷
+        public int luck;                    // 气运
 
         [Header("Current Status")]
         public int currentHp;
@@ -38,6 +46,54 @@ namespace CaoCao.Data
         [NonSerialized] public int mov;
         [NonSerialized] public int speed;
 
+        // --- Current grades (not saved, computed from attribute values) ---
+        [NonSerialized] public GrowthGrade forceGrade;
+        [NonSerialized] public GrowthGrade intelligenceGrade;
+        [NonSerialized] public GrowthGrade commandGrade;
+        [NonSerialized] public GrowthGrade agilityGrade;
+        [NonSerialized] public GrowthGrade luckGrade;
+
+        /// <summary>
+        /// Initialize five dimensions from HeroDefinition base values.
+        /// Called when first recruiting a hero.
+        /// </summary>
+        public void InitializeFiveDimensions(HeroDefinition heroDef)
+        {
+            if (heroDef == null) return;
+            force = heroDef.force;
+            intelligence = heroDef.intelligence;
+            command = heroDef.command;
+            agility = heroDef.agility;
+            luck = heroDef.luck;
+        }
+
+        /// <summary>
+        /// Apply one level-up: grow each attribute based on current grade.
+        /// Call this when the hero gains a level.
+        /// </summary>
+        public void ApplyLevelUpGrowth(HeroDefinition heroDef)
+        {
+            if (heroDef == null) return;
+            force += AttributeGrowthSystem.CalculateLevelUpGrowth(force, heroDef.forceGrade);
+            intelligence += AttributeGrowthSystem.CalculateLevelUpGrowth(intelligence, heroDef.intelligenceGrade);
+            command += AttributeGrowthSystem.CalculateLevelUpGrowth(command, heroDef.commandGrade);
+            agility += AttributeGrowthSystem.CalculateLevelUpGrowth(agility, heroDef.agilityGrade);
+            luck += AttributeGrowthSystem.CalculateLevelUpGrowth(luck, heroDef.luckGrade);
+        }
+
+        /// <summary>
+        /// Recalculate current grades from attribute values.
+        /// </summary>
+        public void RecalculateGrades(HeroDefinition heroDef)
+        {
+            if (heroDef == null) return;
+            forceGrade = AttributeGrowthSystem.GetCurrentGrade(force, heroDef.forceGrade);
+            intelligenceGrade = AttributeGrowthSystem.GetCurrentGrade(intelligence, heroDef.intelligenceGrade);
+            commandGrade = AttributeGrowthSystem.GetCurrentGrade(command, heroDef.commandGrade);
+            agilityGrade = AttributeGrowthSystem.GetCurrentGrade(agility, heroDef.agilityGrade);
+            luckGrade = AttributeGrowthSystem.GetCurrentGrade(luck, heroDef.luckGrade);
+        }
+
         /// <summary>
         /// Recalculate all derived stats from HeroDefinition base + growth + equipment bonuses.
         /// Must be called after loading, leveling up, or changing equipment.
@@ -45,6 +101,13 @@ namespace CaoCao.Data
         public void RecalculateStats(HeroDefinition heroDef, GameDataRegistry registry)
         {
             if (heroDef == null) return;
+
+            // Ensure five dimensions are initialized (for backward compatibility)
+            if (force == 0 && intelligence == 0 && command == 0)
+                InitializeFiveDimensions(heroDef);
+
+            // Recalculate current grades
+            RecalculateGrades(heroDef);
 
             // Base stats from definition + level growth
             maxHp = heroDef.GetMaxHp(level);
